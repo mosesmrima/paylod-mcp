@@ -1,0 +1,47 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-07-09/server.schema.json",
+  "name": "io.github.paylod/mcp",
+  "description": "MCP server for paylod — let AI agents transact M-Pesa (STK push, payment status, balance, QR, error decoding, sandbox simulation) through the paylod BaaS.",
+  "version": "0.1.0",
+  "repository": {
+    "url": "https://github.com/paylod/mcp",
+    "source": "github"
+  },
+  "packages": [
+    {
+      "registryType": "npm",
+      "registryBaseUrl": "https://registry.npmjs.org",
+      "identifier": "@paylod/mcp",
+      "version": "0.1.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "PAYLOD_API_KEY",
+          "description": "Merchant API key (mp_live_... or mp_test_...). Get one from https://paylod.dev.",
+          "isRequired": true,
+          "isSecret": true
+        },
+        {
+          "name": "PAYLOD_BASE_URL",
+          "description": "Override the edge functions base URL (default https://paylod.dev/functions/v1).",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "PAYLOD_TOOLS",
+          "description": "Comma list of tool names/categories, or 'all' / 'default'. Money-moving tools (collect, payout, reversal, mint) are opt-in.",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "PAYLOD_SESSION_TOKEN",
+          "description": "Supabase session JWT for the sandbox simulate_* tools and mint_api_key (dashboard-session authed).",
+          "isRequired": false,
+          "isSecret": true
+        }
+      ]
+    }
+  ]
+}
