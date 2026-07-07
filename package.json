@@ -1,0 +1,71 @@
+{
+  "name": "@paylod/mcp",
+  "version": "0.1.0",
+  "description": "Model Context Protocol (MCP) server for paylod — let AI agents transact M-Pesa (STK push, payments, balance, QR, error decoding) through the paylod BaaS.",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "mpesa",
+    "m-pesa",
+    "daraja",
+    "paylod",
+    "stk-push",
+    "payments",
+    "kenya",
+    "ai-agents",
+    "claude",
+    "cursor"
+  ],
+  "homepage": "https://paylod.dev",
+  "bugs": {
+    "url": "https://github.com/paylod/mcp/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/paylod/mcp.git"
+  },
+  "license": "MIT",
+  "author": "paylod / Moses Mrima",
+  "type": "module",
+  "mcpName": "io.github.paylod/mcp",
+  "bin": {
+    "paylod-mcp": "dist/index.js"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "server.json",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "start": "node dist/index.js",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3",
+    "vitest": "^2.1.9"
+  }
+}
