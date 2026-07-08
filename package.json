@@ -1,7 +1,7 @@
 {
   "name": "@paylod/mcp",
-  "version": "0.1.0",
-  "description": "Model Context Protocol (MCP) server for paylod — let AI agents transact M-Pesa (STK push, payments, balance, QR, error decoding) through the paylod BaaS.",
+  "version": "0.2.0",
+  "description": "OAuth-authenticated remote Model Context Protocol (MCP) server for paylod — let AI agents transact M-Pesa (STK push, payments, payouts, webhooks, error decoding) through the paylod BaaS over Streamable HTTP.",
   "keywords": [
     "mcp",
     "model-context-protocol",
@@ -60,10 +60,12 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
+    "jose": "^6.2.3",
     "zod": "^3.25.76"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
+    "@vitest/coverage-v8": "^2.1.9",
     "tsup": "^8.5.1",
     "typescript": "^5.9.3",
     "vitest": "^2.1.9"

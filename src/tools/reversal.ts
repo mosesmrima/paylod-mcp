@@ -1,7 +1,11 @@
 import { z } from "zod";
+import { SCOPES } from "../scopes.js";
+import { applicationIdField, envField } from "./common.js";
 import type { ToolDef } from "./types.js";
 
 export const reversalInput = {
+  applicationId: applicationIdField,
+  env: envField,
   transactionId: z
     .string()
     .min(1)
@@ -22,15 +26,15 @@ const schema = z.object(reversalInput);
 export const reversalTool: ToolDef = {
   name: "reversal",
   title: "Reverse / refund a transaction",
-  category: "reversal",
+  scope: SCOPES.paymentsPayout,
   description:
-    "Reverse (refund) a completed M-Pesa transaction (POST paylod /reversal). Returns " +
+    "Reverse (refund) a completed M-Pesa transaction (POST /provider-ops/reversal). Returns " +
     "{ disbursementId, conversationId, status: 'pending' } (HTTP 202); the final result arrives on the " +
-    "merchant's results callback. MONEY-MOVING and sensitive — opt-in only (enable via --tools=reversal). " +
-    "Requires initiator credentials and a provider that supports refunds. An mp_test_ key runs in sandbox.",
+    "merchant's results callback. HIGH-RISK money-out — shares the payments.payout scope. An env " +
+    "'sandbox' call runs in the simulator.",
   inputSchema: reversalInput,
   handler: async (client, args) => {
     const body = schema.parse(args);
-    return client.request("POST", "/reversal", { body });
+    return client.request("POST", "/provider-ops/reversal", { body });
   },
 };

@@ -1,15 +1,12 @@
 import { z } from "zod";
+import { SCOPES } from "../scopes.js";
+import { applicationIdField } from "./common.js";
 import type { ToolDef } from "./types.js";
 
 /**
- * Sandbox simulator tools.
- *
- * AUTH CAVEAT: paylod's /simulate/* endpoints are currently authenticated by a
- * dashboard SESSION JWT + org membership, NOT by a merchant API key. These tools
- * therefore require PAYLOD_SESSION_TOKEN (--session-token) to be set to a valid
- * Supabase user access token, and are forced to route through it. Until paylod
- * ships an API-key-authed (ideally test-key-only) simulate path, an agent holding
- * only an mp_test_ key cannot drive the simulator. See README + AGENTS.md.
+ * Sandbox simulator tools. Now OAuth-authed like every other tool — the backend
+ * accepts the same forwarded access token (no manual PAYLOD_SESSION_TOKEN), which
+ * is what unblocks agent-native testing (contract §6.1).
  */
 
 const phoneSchema = z
@@ -17,7 +14,7 @@ const phoneSchema = z
   .regex(/^(?:\+?254|0)?[17]\d{8}$/, "Must be a Kenyan Safaricom number, e.g. 254712345678");
 
 export const simulateCollectInput = {
-  applicationId: z.string().uuid().describe("The paylod application UUID to simulate against."),
+  applicationId: applicationIdField,
   phone: phoneSchema.describe("A test Safaricom number for the simulated STK push."),
   amount: z
     .number()
@@ -39,19 +36,16 @@ const collectSchema = z.object(simulateCollectInput);
 export const simulateCollectTool: ToolDef = {
   name: "simulate_test_payment",
   title: "Simulate a test STK push (sandbox)",
-  category: "sandbox",
+  scope: SCOPES.paymentsSimulate,
   description:
     "Create a SIMULATED M-Pesa collection in the paylod sandbox (POST /simulate/collect). No real STK " +
     "prompt is sent and no money moves. Returns { paymentId, checkoutRequestId, status: 'pending', " +
-    "provider, outcomes[] } where outcomes[] lists the resolutions you can force next via " +
-    "simulate_outcome (each has id + label + status). Typical ids: approve, wrong_pin, " +
-    "insufficient_funds, user_cancelled, timeout. " +
-    "REQUIRES a Supabase session token (PAYLOD_SESSION_TOKEN) — paylod's simulator is dashboard-session " +
-    "authed, not API-key authed (see README).",
+    "provider, outcomes[] } where outcomes[] lists the resolutions you can force next via simulate_outcome " +
+    "(approve, wrong_pin, insufficient_funds, user_cancelled, timeout). Requires the payments.simulate scope.",
   inputSchema: simulateCollectInput,
   handler: async (client, args) => {
     const body = collectSchema.parse(args);
-    return client.request("POST", "/simulate/collect", { body, useSessionToken: true });
+    return client.request("POST", "/simulate/collect", { body });
   },
 };
 
@@ -73,16 +67,15 @@ const outcomeSchema = z.object(simulateOutcomeInput);
 export const simulateOutcomeTool: ToolDef = {
   name: "simulate_outcome",
   title: "Force the outcome of a simulated payment (sandbox)",
-  category: "sandbox",
+  scope: SCOPES.paymentsSimulate,
   description:
     "Resolve a pending SIMULATED payment to a chosen outcome (POST /simulate/outcome). Drives the exact " +
     "same settlement + webhook path a real payment would, so you can test success and every failure code " +
-    "end-to-end. Only works on payments created by simulate_test_payment (metadata.source === " +
-    "'simulator', still pending, sandbox env). Returns { paymentId, status, resultCode, resultDesc, " +
-    "mpesaReceipt, webhookQueued }. REQUIRES a Supabase session token (see simulate_test_payment).",
+    "end-to-end. Only works on payments created by simulate_test_payment. Returns { paymentId, status, " +
+    "resultCode, resultDesc, mpesaReceipt, webhookQueued }. Requires the payments.simulate scope.",
   inputSchema: simulateOutcomeInput,
   handler: async (client, args) => {
     const body = outcomeSchema.parse(args);
-    return client.request("POST", "/simulate/outcome", { body, useSessionToken: true });
+    return client.request("POST", "/simulate/outcome", { body });
   },
 };

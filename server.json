@@ -1,45 +1,58 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-07-09/server.schema.json",
   "name": "io.github.paylod/mcp",
-  "description": "MCP server for paylod — let AI agents transact M-Pesa (STK push, payment status, balance, QR, error decoding, sandbox simulation) through the paylod BaaS.",
-  "version": "0.1.0",
+  "description": "OAuth-authenticated remote MCP server for paylod — let AI agents transact M-Pesa (STK push, payments, payouts, webhooks, QR, error decoding, sandbox simulation) through the paylod BaaS over Streamable HTTP.",
+  "version": "0.2.0",
   "repository": {
     "url": "https://github.com/paylod/mcp",
     "source": "github"
   },
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://mcp.paylod.dev/mcp"
+    }
+  ],
   "packages": [
     {
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "@paylod/mcp",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "transport": {
-        "type": "stdio"
+        "type": "streamable-http",
+        "url": "http://localhost:8787/mcp"
       },
       "environmentVariables": [
         {
-          "name": "PAYLOD_API_KEY",
-          "description": "Merchant API key (mp_live_... or mp_test_...). Get one from https://paylod.dev.",
-          "isRequired": true,
-          "isSecret": true
+          "name": "MCP_PORT",
+          "description": "HTTP port the server listens on (default 8787). Sits behind Caddy at https://mcp.paylod.dev/mcp.",
+          "isRequired": false,
+          "isSecret": false
         },
         {
           "name": "PAYLOD_BASE_URL",
-          "description": "Override the edge functions base URL (default https://paylod.dev/functions/v1).",
+          "description": "paylod backend edge-functions base URL (default https://paylod.dev/functions/v1).",
           "isRequired": false,
           "isSecret": false
         },
         {
-          "name": "PAYLOD_TOOLS",
-          "description": "Comma list of tool names/categories, or 'all' / 'default'. Money-moving tools (collect, payout, reversal, mint) are opt-in.",
+          "name": "MCP_CANONICAL_URI",
+          "description": "Canonical resource URI / token audience (default https://mcp.paylod.dev/mcp).",
           "isRequired": false,
           "isSecret": false
         },
         {
-          "name": "PAYLOD_SESSION_TOKEN",
-          "description": "Supabase session JWT for the sandbox simulate_* tools and mint_api_key (dashboard-session authed).",
+          "name": "AS_ISSUER",
+          "description": "OAuth authorization-server issuer (default https://paylod.dev/oauth).",
           "isRequired": false,
-          "isSecret": true
+          "isSecret": false
+        },
+        {
+          "name": "AS_JWKS_URI",
+          "description": "AS JWKS endpoint for ES256 verification (default https://paylod.dev/oauth/.well-known/jwks.json).",
+          "isRequired": false,
+          "isSecret": false
         }
       ]
     }

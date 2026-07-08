@@ -1,7 +1,11 @@
 import { z } from "zod";
+import { SCOPES } from "../scopes.js";
+import { applicationIdField, envField } from "./common.js";
 import type { ToolDef } from "./types.js";
 
 export const qrInput = {
+  applicationId: applicationIdField,
+  env: envField,
   amount: z.number().positive().describe("Amount in KES to encode into the QR code."),
   refNo: z.string().min(1).max(64).optional().describe("Payment reference (1–64 chars). Default 'QR'."),
   merchantName: z
@@ -29,14 +33,13 @@ const schema = z.object(qrInput);
 export const qrTool: ToolDef = {
   name: "generate_qr",
   title: "Generate an M-Pesa QR code",
-  category: "qr",
+  scope: SCOPES.paymentsCollect,
   description:
-    "Generate a scannable M-Pesa QR code (POST paylod /qr-generate) and return { qrBase64 } — a base64 " +
-    "PNG the customer can scan to pay. Stateless: no money moves, no ledger row is created, no callback " +
-    "fires. Safe to call freely; enabled by default.",
+    "Generate a scannable M-Pesa QR code (POST /provider-ops/qr) and return { qrBase64 } — a base64 PNG " +
+    "the customer can scan to pay. No money moves at generation time. Requires the payments.collect scope.",
   inputSchema: qrInput,
   handler: async (client, args) => {
     const body = schema.parse(args);
-    return client.request("POST", "/qr-generate", { body });
+    return client.request("POST", "/provider-ops/qr", { body });
   },
 };

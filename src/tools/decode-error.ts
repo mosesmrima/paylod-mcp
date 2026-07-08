@@ -17,7 +17,7 @@ const schema = z.object(decodeErrorInput);
 export const decodeErrorTool: ToolDef = {
   name: "decode_mpesa_error",
   title: "Decode an M-Pesa error code",
-  category: "local",
+  // No scope, no token, no network — pure/local (contract §2.1).
   description:
     "Turn a cryptic M-Pesa/Daraja ResultCode into a plain-English explanation. PURE and OFFLINE — no " +
     "network call, no API key needed. Returns { code, title, cause, fix, category, retryable, " +

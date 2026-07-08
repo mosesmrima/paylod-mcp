@@ -1,8 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { decodeDarajaResult, ERROR_CATALOG } from "../src/error-catalog.js";
 import { decodeErrorTool } from "../src/tools/decode-error.js";
-import { PaylodClient } from "../src/client.js";
-import { makeConfig, mockFetch } from "./helpers.js";
+import { makeClient, mockFetch } from "./helpers.js";
 
 describe("decodeDarajaResult", () => {
   it("decodes a known code (wrong PIN = 2001)", () => {
@@ -39,14 +38,14 @@ describe("decodeDarajaResult", () => {
 describe("decode_mpesa_error tool", () => {
   it("is pure — makes no network call", async () => {
     const { fetch, calls } = mockFetch();
-    const client = new PaylodClient(makeConfig(), fetch);
+    const client = makeClient({}, fetch);
     const result = await decodeErrorTool.handler(client, { resultCode: 1032 });
     expect(calls.length).toBe(0);
     expect(result).toMatchObject({ code: "1032", category: "customer" });
   });
 
   it("rejects invalid input", async () => {
-    const client = new PaylodClient(makeConfig(), mockFetch().fetch);
+    const client = makeClient({}, mockFetch().fetch);
     await expect(decodeErrorTool.handler(client, {})).rejects.toThrow();
   });
 });

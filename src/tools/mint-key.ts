@@ -1,11 +1,10 @@
 import { z } from "zod";
+import { SCOPES } from "../scopes.js";
+import { applicationIdField } from "./common.js";
 import type { ToolDef } from "./types.js";
 
 export const mintKeyInput = {
-  applicationId: z
-    .string()
-    .uuid()
-    .describe("The paylod application UUID to mint a key for."),
+  applicationId: applicationIdField,
   env: z
     .enum(["sandbox", "production"])
     .optional()
@@ -16,19 +15,17 @@ export const mintKeyInput = {
 const schema = z.object(mintKeyInput);
 
 export const mintKeyTool: ToolDef = {
-  name: "mint_api_key",
+  name: "mint_key",
   title: "Mint a paylod API key",
-  category: "mint",
+  scope: SCOPES.keysMint,
   description:
-    "Mint a NEW paylod merchant API key for an application (POST paylod /mint-key), returning " +
-    "{ apiKey, prefix, env }. The plaintext apiKey is shown ONCE — store it securely. ELEVATED and " +
-    "sensitive: off by default, enable only with --tools=mint_api_key. " +
-    "IMPORTANT AUTH NOTE: paylod's /mint-key is authenticated by a dashboard SESSION JWT + org " +
-    "membership, NOT by a merchant API key. This tool therefore needs PAYLOD_SESSION_TOKEN " +
-    "(--session-token) set to a valid Supabase user access token; without it the call returns 401.",
+    "Mint a NEW paylod merchant API key for an application (POST /mint-key), returning " +
+    "{ apiKey, prefix, env }. The plaintext apiKey is shown ONCE — store it securely. HIGH-RISK: " +
+    "requires the keys.mint scope. Use this to hand a long-lived REST key to a non-agent integration; " +
+    "the MCP server itself never uses API keys.",
   inputSchema: mintKeyInput,
   handler: async (client, args) => {
     const body = schema.parse(args);
-    return client.request("POST", "/mint-key", { body, useSessionToken: true });
+    return client.request("POST", "/mint-key", { body });
   },
 };

@@ -1,30 +1,38 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { selectTools } from "./allowlist.js";
 import { PaylodClient } from "./client.js";
-import type { Config } from "./config.js";
 import { toMessage } from "./errors.js";
 import { ALL_TOOLS, type ToolDef } from "./tools/index.js";
 
 export const SERVER_NAME = "paylod-mcp";
-export const SERVER_VERSION = "0.1.0";
+export const SERVER_VERSION = "0.2.0";
 
-export interface BuildServerResult {
-  server: McpServer;
-  /** The tools that were actually registered (post-allowlist). */
-  enabledTools: ToolDef[];
+const TOOLS_BY_NAME: ReadonlyMap<string, ToolDef> = new Map(
+  ALL_TOOLS.map((t) => [t.name, t]),
+);
+
+/** Look up a tool definition by its MCP name. */
+export function toolByName(name: string): ToolDef | undefined {
+  return TOOLS_BY_NAME.get(name);
 }
 
 /**
- * Build (but do not connect) an MCP server wired to paylod. The transport is
- * chosen by the caller (stdio in the CLI entrypoint).
+ * The scope required to invoke a tool, or `undefined` if the tool is public
+ * (`decode_mpesa_error`, `authenticate`) or the name is unknown. The HTTP layer
+ * uses this to enforce scope on `tools/call` before dispatch.
  */
-export function buildServer(config: Config, client?: PaylodClient): BuildServerResult {
-  const paylod = client ?? new PaylodClient(config);
+export function requiredScopeFor(toolName: string): string | undefined {
+  return TOOLS_BY_NAME.get(toolName)?.scope;
+}
+
+/**
+ * Build a request-scoped MCP server bound to one validated access token. All 18
+ * tools are registered so `tools/list` is complete for discovery; per-tool scope
+ * is enforced at the HTTP layer (403) before a `tools/call` reaches here.
+ */
+export function buildMcpServer(client: PaylodClient): McpServer {
   const server = new McpServer({ name: SERVER_NAME, version: SERVER_VERSION });
 
-  const enabledTools = selectTools(ALL_TOOLS, config.tools);
-
-  for (const tool of enabledTools) {
+  for (const tool of ALL_TOOLS) {
     server.registerTool(
       tool.name,
       {
@@ -34,7 +42,7 @@ export function buildServer(config: Config, client?: PaylodClient): BuildServerR
       },
       async (args: Record<string, unknown>) => {
         try {
-          const result = await tool.handler(paylod, args);
+          const result = await tool.handler(client, args);
           return {
             content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
           };
@@ -48,5 +56,5 @@ export function buildServer(config: Config, client?: PaylodClient): BuildServerR
     );
   }
 
-  return { server, enabledTools };
+  return server;
 }

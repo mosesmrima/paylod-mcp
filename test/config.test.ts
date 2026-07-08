@@ -1,61 +1,77 @@
 import { describe, expect, it } from "vitest";
-import { keyEnvOf, loadConfig, parseArgs, DEFAULT_BASE_URL } from "../src/config.js";
-
-describe("keyEnvOf", () => {
-  it("detects production and sandbox keys", () => {
-    expect(keyEnvOf("mp_live_abc")).toBe("production");
-    expect(keyEnvOf("mp_test_abc")).toBe("sandbox");
-    expect(keyEnvOf("something_else")).toBe("unknown");
-  });
-});
+import {
+  DEFAULT_AS_ISSUER,
+  DEFAULT_AS_JWKS_URI,
+  DEFAULT_BACKEND_BASE_URL,
+  DEFAULT_MCP_CANONICAL_URI,
+  DEFAULT_PORT,
+  loadConfig,
+  parseArgs,
+} from "../src/config.js";
 
 describe("parseArgs", () => {
   it("parses --key=value form", () => {
-    const a = parseArgs(["--api-key=mp_test_1", "--base-url=https://x.dev", "--tools=all"]);
-    expect(a.apiKey).toBe("mp_test_1");
-    expect(a.baseUrl).toBe("https://x.dev");
-    expect(a.tools).toBe("all");
+    const a = parseArgs([
+      "--port=9090",
+      "--base-url=https://x.dev/fn",
+      "--canonical-uri=https://mcp.x.dev/mcp",
+      "--as-issuer=https://x.dev/oauth",
+    ]);
+    expect(a.port).toBe(9090);
+    expect(a.backendBaseUrl).toBe("https://x.dev/fn");
+    expect(a.canonicalUri).toBe("https://mcp.x.dev/mcp");
+    expect(a.asIssuer).toBe("https://x.dev/oauth");
   });
 
   it("parses --key value form", () => {
-    const a = parseArgs(["--api-key", "mp_live_2", "--timeout", "1234"]);
-    expect(a.apiKey).toBe("mp_live_2");
+    const a = parseArgs(["--as-jwks-uri", "https://x.dev/jwks", "--timeout", "1234"]);
+    expect(a.asJwksUri).toBe("https://x.dev/jwks");
     expect(a.timeoutMs).toBe(1234);
   });
 
   it("ignores unknown flags and non-flags", () => {
-    const a = parseArgs(["positional", "--unknown", "x", "--api-key=k"]);
-    expect(a.apiKey).toBe("k");
-  });
-
-  it("captures session token", () => {
-    const a = parseArgs(["--session-token=jwt.abc.def"]);
-    expect(a.sessionToken).toBe("jwt.abc.def");
+    const a = parseArgs(["positional", "--unknown", "x", "--port=7000"]);
+    expect(a.port).toBe(7000);
   });
 });
 
 describe("loadConfig", () => {
-  it("throws when no api key is provided", () => {
-    expect(() => loadConfig([], {})).toThrow(/Missing paylod API key/);
+  it("uses production seam defaults when nothing is provided", () => {
+    const cfg = loadConfig([], {});
+    expect(cfg.port).toBe(DEFAULT_PORT);
+    expect(cfg.backendBaseUrl).toBe(DEFAULT_BACKEND_BASE_URL);
+    expect(cfg.canonicalUri).toBe(DEFAULT_MCP_CANONICAL_URI);
+    expect(cfg.asIssuer).toBe(DEFAULT_AS_ISSUER);
+    expect(cfg.asJwksUri).toBe(DEFAULT_AS_JWKS_URI);
+    expect(cfg.timeoutMs).toBe(30_000);
   });
 
   it("prefers CLI args over env", () => {
-    const cfg = loadConfig(["--api-key=mp_test_cli"], { PAYLOD_API_KEY: "mp_live_env" });
-    expect(cfg.apiKey).toBe("mp_test_cli");
-    expect(cfg.keyEnv).toBe("sandbox");
+    const cfg = loadConfig(["--port=1234"], { MCP_PORT: "5555" });
+    expect(cfg.port).toBe(1234);
   });
 
-  it("falls back to env and defaults", () => {
-    const cfg = loadConfig([], { PAYLOD_API_KEY: "mp_live_env" });
-    expect(cfg.apiKey).toBe("mp_live_env");
-    expect(cfg.keyEnv).toBe("production");
-    expect(cfg.baseUrl).toBe(DEFAULT_BASE_URL);
-    expect(cfg.timeoutMs).toBe(30_000);
-    expect(cfg.tools).toBeUndefined();
+  it("falls back to env", () => {
+    const cfg = loadConfig([], {
+      MCP_PORT: "5555",
+      PAYLOD_BASE_URL: "https://env.dev/fn",
+      MCP_CANONICAL_URI: "https://mcp.env.dev/mcp",
+      AS_ISSUER: "https://env.dev/oauth",
+      AS_JWKS_URI: "https://env.dev/jwks.json",
+    });
+    expect(cfg.port).toBe(5555);
+    expect(cfg.backendBaseUrl).toBe("https://env.dev/fn");
+    expect(cfg.canonicalUri).toBe("https://mcp.env.dev/mcp");
+    expect(cfg.asIssuer).toBe("https://env.dev/oauth");
+    expect(cfg.asJwksUri).toBe("https://env.dev/jwks.json");
   });
 
-  it("strips trailing slashes from base url", () => {
-    const cfg = loadConfig(["--api-key=k", "--base-url=https://x.dev/fn/"], {});
-    expect(cfg.baseUrl).toBe("https://x.dev/fn");
+  it("strips a trailing slash from the backend base url but not the canonical uri", () => {
+    const cfg = loadConfig(
+      ["--base-url=https://x.dev/fn/", "--canonical-uri=https://mcp.x.dev/mcp"],
+      {},
+    );
+    expect(cfg.backendBaseUrl).toBe("https://x.dev/fn");
+    expect(cfg.canonicalUri).toBe("https://mcp.x.dev/mcp");
   });
 });

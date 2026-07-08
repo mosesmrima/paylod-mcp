@@ -1,12 +1,12 @@
 /**
- * Thin, runtime-agnostic HTTP client for the paylod edge functions.
+ * Thin, request-scoped HTTP client for the paylod backend edge functions.
  *
- * Uses the global `fetch` (Node >= 18) — zero heavy dependencies. All merchant
- * endpoints authenticate with the API key (`Authorization: Bearer mp_...`); the
- * sandbox `simulate` endpoints use a Supabase session JWT instead (see README).
+ * Every instance is bound to ONE validated OAuth access token and the scopes it
+ * granted. That SAME token is forwarded to the backend in
+ * `Authorization: Bearer <token>` (contract §3.2 step 5). It is NEVER forwarded
+ * to Daraja/Safaricom (the backend holds those credentials).
  */
 
-import type { Config } from "./config.js";
 import { PaylodApiError, PaylodNetworkError } from "./errors.js";
 
 export interface RequestOptions {
@@ -14,13 +14,9 @@ export interface RequestOptions {
   body?: unknown;
   /** Query string params (appended to the URL). */
   query?: Record<string, string | number | undefined>;
-  /** Value for the `Idempotency-Key` header (safe retries on /collect). */
+  /** Value for the `Idempotency-Key` header (safe retries on collect). */
   idempotencyKey?: string;
-  /**
-   * Authenticate with the Supabase session JWT (`config.sessionToken`) instead
-   * of the merchant API key. Used only by the sandbox `simulate` endpoints.
-   */
-  useSessionToken?: boolean;
+  /** HTTP method override for endpoints that use PATCH. Defaults per call. */
 }
 
 /** Minimal `fetch` signature so tests can inject a mock. */
@@ -39,29 +35,43 @@ export type FetchLike = (
   text(): Promise<string>;
 }>;
 
+export interface PaylodClientOptions {
+  backendBaseUrl: string;
+  timeoutMs: number;
+  /** The validated OAuth access token forwarded to the backend. */
+  token: string;
+  /** Scopes granted by that token (for tools like `authenticate`). */
+  scopes: Set<string>;
+}
+
+export type HttpMethod = "GET" | "POST" | "PATCH";
+
 export class PaylodClient {
-  private readonly config: Config;
+  private readonly backendBaseUrl: string;
+  private readonly timeoutMs: number;
+  private readonly token: string;
+  readonly scopes: Set<string>;
   private readonly fetchImpl: FetchLike;
 
-  constructor(config: Config, fetchImpl?: FetchLike) {
-    this.config = config;
+  constructor(opts: PaylodClientOptions, fetchImpl?: FetchLike) {
+    this.backendBaseUrl = opts.backendBaseUrl.replace(/\/+$/, "");
+    this.timeoutMs = opts.timeoutMs;
+    this.token = opts.token;
+    this.scopes = opts.scopes;
     this.fetchImpl = fetchImpl ?? (globalThis.fetch as unknown as FetchLike);
     if (!this.fetchImpl) {
       throw new Error("No fetch implementation available. Use Node >= 18 or pass one explicitly.");
     }
   }
 
-  get keyEnv() {
-    return this.config.keyEnv;
-  }
-
-  get hasSessionToken(): boolean {
-    return Boolean(this.config.sessionToken);
+  /** Scopes this client's token was granted, as a sorted array. */
+  grantedScopes(): string[] {
+    return [...this.scopes].sort();
   }
 
   buildUrl(path: string, query?: RequestOptions["query"]): string {
     const clean = path.startsWith("/") ? path : `/${path}`;
-    const url = `${this.config.baseUrl}${clean}`;
+    const url = `${this.backendBaseUrl}${clean}`;
     if (!query) return url;
     const params = new URLSearchParams();
     for (const [k, v] of Object.entries(query)) {
@@ -71,31 +81,20 @@ export class PaylodClient {
     return qs ? `${url}?${qs}` : url;
   }
 
-  buildHeaders(opts: RequestOptions): Record<string, string> {
+  private buildHeaders(opts: RequestOptions): Record<string, string> {
     const headers: Record<string, string> = {
       Accept: "application/json",
       "User-Agent": "paylod-mcp",
+      // Forward the SAME OAuth token to the backend. Never to Daraja.
+      Authorization: `Bearer ${this.token}`,
     };
-    if (opts.useSessionToken) {
-      const token = this.config.sessionToken;
-      if (!token) {
-        throw new PaylodApiError(
-          "This tool needs a Supabase session token (PAYLOD_SESSION_TOKEN / --session-token). " +
-            "The paylod sandbox simulator is currently dashboard-session authed, not API-key authed.",
-          401,
-        );
-      }
-      headers["Authorization"] = `Bearer ${token}`;
-    } else {
-      headers["Authorization"] = `Bearer ${this.config.apiKey}`;
-    }
     if (opts.body !== undefined) headers["Content-Type"] = "application/json";
     if (opts.idempotencyKey) headers["Idempotency-Key"] = opts.idempotencyKey;
     return headers;
   }
 
   async request<T = unknown>(
-    method: "GET" | "POST",
+    method: HttpMethod,
     path: string,
     opts: RequestOptions = {},
   ): Promise<T> {
@@ -103,7 +102,7 @@ export class PaylodClient {
     const headers = this.buildHeaders(opts);
 
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), this.config.timeoutMs);
+    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
 
     let res: Awaited<ReturnType<FetchLike>>;
     try {
@@ -114,9 +113,10 @@ export class PaylodClient {
         signal: controller.signal,
       });
     } catch (err) {
-      const msg = err instanceof Error && err.name === "AbortError"
-        ? `Request to ${path} timed out after ${this.config.timeoutMs}ms`
-        : `Network error calling ${path}: ${err instanceof Error ? err.message : String(err)}`;
+      const msg =
+        err instanceof Error && err.name === "AbortError"
+          ? `Request to ${path} timed out after ${this.timeoutMs}ms`
+          : `Network error calling ${path}: ${err instanceof Error ? err.message : String(err)}`;
       throw new PaylodNetworkError(msg);
     } finally {
       clearTimeout(timer);

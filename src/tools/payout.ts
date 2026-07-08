@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { SCOPES } from "../scopes.js";
+import { applicationIdField, envField } from "./common.js";
 import type { ToolDef } from "./types.js";
 
 const phoneSchema = z
@@ -7,6 +9,8 @@ const phoneSchema = z
   .describe("Recipient Safaricom number (paylod normalizes it), e.g. 254712345678.");
 
 export const payoutInput = {
+  applicationId: applicationIdField,
+  env: envField,
   amount: z
     .number()
     .int("Amount must be a whole number of KES")
@@ -27,16 +31,15 @@ const schema = z.object(payoutInput);
 export const payoutTool: ToolDef = {
   name: "payout",
   title: "Send money (B2C payout)",
-  category: "payout",
+  scope: SCOPES.paymentsPayout,
   description:
-    "Disburse money from the merchant to a customer via M-Pesa B2C (POST paylod /payout). Returns " +
+    "Disburse money from the merchant to a customer via M-Pesa B2C (POST /provider-ops/payout). Returns " +
     "{ disbursementId, conversationId, status: 'pending' } (HTTP 202); the final result arrives on the " +
-    "merchant's results callback. MONEY-MOVING and irreversible on a live key — opt-in only (enable via " +
-    "--tools=payout). Requires initiator credentials and a provider that supports payouts. An mp_test_ " +
-    "key runs in sandbox.",
+    "merchant's results callback. HIGH-RISK money-out — requires the payments.payout scope. With env " +
+    "'production' this is real and irreversible.",
   inputSchema: payoutInput,
   handler: async (client, args) => {
     const body = schema.parse(args);
-    return client.request("POST", "/payout", { body });
+    return client.request("POST", "/provider-ops/payout", { body });
   },
 };

@@ -1,7 +1,11 @@
 import { z } from "zod";
+import { SCOPES } from "../scopes.js";
+import { applicationIdField, envField } from "./common.js";
 import type { ToolDef } from "./types.js";
 
 export const accountBalanceInput = {
+  applicationId: applicationIdField,
+  env: envField,
   identifierType: z
     .enum(["1", "2", "4"])
     .optional()
@@ -14,15 +18,15 @@ const schema = z.object(accountBalanceInput);
 export const accountBalanceTool: ToolDef = {
   name: "get_account_balance",
   title: "Get M-Pesa account balance",
-  category: "read",
+  scope: SCOPES.paymentsRead,
   description:
-    "Query the merchant's M-Pesa account balance (POST paylod /account-balance). This is ASYNCHRONOUS: " +
-    "it returns { queryId, conversationId } with HTTP 202, and the actual balance is delivered later to " +
-    "the merchant's results callback — this tool does not return the balance value directly. Requires " +
-    "the merchant to have configured an initiator name + password in paylod.",
+    "Query the merchant's M-Pesa account balance (POST /provider-ops/account-balance). ASYNCHRONOUS: " +
+    "returns { queryId, conversationId } with HTTP 202; the actual balance is delivered later to the " +
+    "merchant's results callback — not returned directly. Requires the payments.read scope and a " +
+    "configured initiator name + password.",
   inputSchema: accountBalanceInput,
   handler: async (client, args) => {
     const body = schema.parse(args);
-    return client.request("POST", "/account-balance", { body });
+    return client.request("POST", "/provider-ops/account-balance", { body });
   },
 };

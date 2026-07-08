@@ -1,19 +1,6 @@
 import type { ZodRawShape } from "zod";
 import type { PaylodClient } from "../client.js";
-
-/**
- * Tool categories drive the allowlist. Everything except the money-moving /
- * elevated categories is enabled by default.
- */
-export type ToolCategory =
-  | "read" // GET-style reads, non-mutating
-  | "local" // pure, offline (no network)
-  | "qr" // stateless QR generation (no money movement, no ledger row)
-  | "sandbox" // sandbox simulator (test-mode only)
-  | "collect" // STK push — moves money on a live key (opt-in)
-  | "payout" // B2C money-out (opt-in)
-  | "reversal" // refund / reversal (opt-in)
-  | "mint"; // mint API keys — elevated / destructive-ish (opt-in)
+import type { Scope } from "../scopes.js";
 
 /** A JSON-serializable tool result. */
 export type ToolResult = unknown;
@@ -23,12 +10,15 @@ export interface ToolDef {
   name: string;
   /** Short human title. */
   title: string;
-  /** Category — controls allowlisting. */
-  category: ToolCategory;
+  /**
+   * OAuth scope required to invoke this tool (contract §2.2). `undefined` means
+   * no scope is required — `decode_mpesa_error` (pure/local) and `authenticate`.
+   */
+  scope?: Scope;
   /** Rich description; agents read this to decide when/how to call the tool. */
   description: string;
   /** Zod raw shape used as the MCP input schema. */
   inputSchema: ZodRawShape;
-  /** Handler — receives the validated args and returns a JSON-serializable result. */
+  /** Handler — receives the request-scoped client + validated args. */
   handler: (client: PaylodClient, args: Record<string, unknown>) => Promise<ToolResult>;
 }

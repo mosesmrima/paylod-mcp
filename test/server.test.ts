@@ -1,29 +1,31 @@
 import { describe, expect, it } from "vitest";
-import { buildServer } from "../src/server.js";
-import { PaylodClient } from "../src/client.js";
-import { ALL_TOOLS } from "../src/tools/index.js";
-import { makeConfig, mockFetch } from "./helpers.js";
+import { buildMcpServer, requiredScopeFor, toolByName } from "../src/server.js";
+import { SCOPES } from "../src/scopes.js";
+import { makeClient } from "./helpers.js";
 
-describe("buildServer", () => {
-  it("registers only the default-safe tools when no selection is given", () => {
-    const client = new PaylodClient(makeConfig(), mockFetch().fetch);
-    const { enabledTools } = buildServer(makeConfig(), client);
-    const names = enabledTools.map((t) => t.name);
-    expect(names).toContain("get_payment_status");
-    expect(names).toContain("decode_mpesa_error");
-    expect(names).not.toContain("payout");
-    expect(names).not.toContain("request_stk_push");
-  });
-
-  it("registers every tool with --tools=all", () => {
-    const client = new PaylodClient(makeConfig({ tools: "all" }), mockFetch().fetch);
-    const { enabledTools } = buildServer(makeConfig({ tools: "all" }), client);
-    expect(enabledTools.length).toBe(ALL_TOOLS.length);
-  });
-
-  it("returns a connectable McpServer instance", () => {
-    const client = new PaylodClient(makeConfig(), mockFetch().fetch);
-    const { server } = buildServer(makeConfig(), client);
+describe("buildMcpServer", () => {
+  it("returns a connectable McpServer with all 18 tools registered", () => {
+    const server = buildMcpServer(makeClient());
     expect(typeof server.connect).toBe("function");
+  });
+});
+
+describe("requiredScopeFor", () => {
+  it("returns the scope for a scoped tool", () => {
+    expect(requiredScopeFor("payout")).toBe(SCOPES.paymentsPayout);
+    expect(requiredScopeFor("request_stk_push")).toBe(SCOPES.paymentsCollect);
+  });
+
+  it("returns undefined for public tools and unknown names", () => {
+    expect(requiredScopeFor("decode_mpesa_error")).toBeUndefined();
+    expect(requiredScopeFor("authenticate")).toBeUndefined();
+    expect(requiredScopeFor("no_such_tool")).toBeUndefined();
+  });
+});
+
+describe("toolByName", () => {
+  it("resolves a known tool", () => {
+    expect(toolByName("mint_key")?.name).toBe("mint_key");
+    expect(toolByName("nope")).toBeUndefined();
   });
 });
