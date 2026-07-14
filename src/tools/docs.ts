@@ -79,6 +79,24 @@ export function lookupDocs(opts: { topic?: string; query?: string }): DocsAnswer
   };
 }
 
+/**
+ * The `topic` description, RENDERED from the bundle — never typed out by hand.
+ *
+ * The enum was already derived; its prose was not, and the two drifted immediately: the published
+ * schema went on advertising a `callback-url` topic that no longer existed and, far worse, never
+ * mentioned `sdk` — so an agent that trusted the enum (the entire point of an enum) never found
+ * `collectAndWait()` and hand-rolled the fetch + polling loop the SDK exists to delete. Both halves
+ * now come from DOC_TOPICS. Adding or renaming a topic updates this sentence for free.
+ */
+export const TOPIC_DESCRIPTION: string = [
+  "Ask for one topic directly instead of searching. Each is the published page(s) behind it: ",
+  DOC_TOPICS.map((t) => `'${t.id}' (${t.title})`).join(", "),
+  ", or 'all' (the complete docs in one answer — the same bytes as https://paylod.dev/llms-full.txt). ",
+  "Historical ids still resolve to their current topic: ",
+  DOC_TOPICS.flatMap((t) => t.aliases.map((a) => `'${a}' → '${t.id}'`)).join(", "),
+  ".",
+].join("");
+
 export const getDocsInput = {
   query: z
     .string()
@@ -91,17 +109,7 @@ export const getDocsInput = {
   topic: z
     .enum(ACCEPTED_TOPIC_IDS as unknown as [string, ...string[]])
     .optional()
-    .describe(
-      "Ask for one topic directly instead of searching: " +
-        "'integration' (end-to-end setup — the default), 'sdk' (@paylod/node, what application " +
-        "code should use), 'auth' (API keys, environments, idempotency, rate limits), " +
-        "'payments' (taking an STK Push), 'results' (polling, waiting, the PaymentOutcome), " +
-        "'webhooks' (signed delivery + HMAC verification), 'errors' (M-Pesa result codes), " +
-        "'security' (where the API key may and may not go), 'sandbox' (testing the failure " +
-        "paths), 'go-live' (the Daraja callback URL + production checklist), 'mcp' (these tools " +
-        "and the order to call them in), 'cli', 'endpoints' (payouts, reversals, QR, C2B), or " +
-        "'all' (the complete docs in one answer — same bytes as https://paylod.dev/llms-full.txt).",
-    ),
+    .describe(TOPIC_DESCRIPTION),
 } as const;
 
 const schema = z.object(getDocsInput);
