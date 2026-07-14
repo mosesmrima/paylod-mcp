@@ -385,6 +385,81 @@ describe("declared response shapes match what the backend returns", () => {
   });
 });
 
+/**
+ * THE list_keys → revoke_key HANDSHAKE.
+ *
+ * The two backend routes disagree with each other:
+ *   GET  /api-keys          → view(r) = { id, applicationId, env, prefix, ... }   ← `id`
+ *   POST /api-keys/:id/revoke → { revoked, apiKeyId, prefix }                     ← `apiKeyId`
+ *
+ * So the fixture below is transcribed from the backend's ACTUAL `view()` projection (with `id`),
+ * NOT from the shape the tool description wishes existed. Mocking the wished-for shape is how this
+ * bug survived: the old test asserted the contract against its own invention. list_keys now
+ * normalizes `id` → `apiKeyId`; these tests fail if that normalization is ever removed.
+ */
+describe("list_keys emits the exact field revoke_key consumes", () => {
+  /** VERBATIM from supabase/functions/api-keys/index.ts view() — the key is `id`, not `apiKeyId`. */
+  const REAL_GET_API_KEYS_ROW = {
+    id: UUID,
+    applicationId: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+    env: "sandbox",
+    prefix: "mp_test_ab12cd34",
+    name: "ci-key",
+    lastUsedAt: null,
+    revokedAt: null,
+    createdAt: "2026-07-14T00:00:00Z",
+    active: true,
+  } as const;
+
+  it("renames the backend's `id` to apiKeyId (the documented shape becomes true)", async () => {
+    const { fetch } = mockFetch({ json: { keys: [REAL_GET_API_KEYS_ROW] } });
+    const res = (await toolByName("list_keys").handler(makeClient({}, fetch), {
+      applicationId: REAL_GET_API_KEYS_ROW.applicationId,
+    })) as { keys: Array<Record<string, unknown>> };
+
+    const key = res.keys[0]!;
+    expect(key.apiKeyId).toBe(UUID);
+    // One word for one thing: the raw backend `id` must not survive alongside it.
+    expect(key).not.toHaveProperty("id");
+    // Every other column is passed through untouched.
+    expect(key.prefix).toBe("mp_test_ab12cd34");
+    expect(key.active).toBe(true);
+  });
+
+  it("the advertised workflow runs end to end: list a key, feed it straight to revoke_key", async () => {
+    const listFetch = mockFetch({ json: { keys: [REAL_GET_API_KEYS_ROW] } });
+    const listed = (await toolByName("list_keys").handler(makeClient({}, listFetch.fetch), {
+      applicationId: REAL_GET_API_KEYS_ROW.applicationId,
+    })) as { keys: Array<{ apiKeyId?: string }> };
+
+    // This is literally what the tool descriptions tell an agent to do. It used to yield undefined,
+    // which revoke_key's z.string().uuid() then rejected.
+    const apiKeyId = listed.keys[0]!.apiKeyId;
+    expect(apiKeyId).toBeTypeOf("string");
+
+    const revokeFetch = mockFetch({ json: { revoked: true, apiKeyId, prefix: "mp_test_ab12cd34" } });
+    await toolByName("revoke_key").handler(makeClient({}, revokeFetch.fetch), { apiKeyId });
+
+    expect(pathOf(revokeFetch.calls[0]!.url)).toBe("/api-keys/:id/revoke");
+    expect(revokeFetch.calls[0]!.url).toContain(UUID);
+  });
+
+  it("passes an already-correct apiKeyId through unchanged (forward-compatible with a backend fix)", async () => {
+    const { fetch } = mockFetch({ json: { keys: [{ apiKeyId: UUID, prefix: "mp_test_x", active: true }] } });
+    const res = (await toolByName("list_keys").handler(makeClient({}, fetch), {
+      applicationId: UUID,
+    })) as { keys: Array<Record<string, unknown>> };
+    expect(res.keys[0]!.apiKeyId).toBe(UUID);
+  });
+
+  it("both tool descriptions promise apiKeyId — and no longer promise a bare `id`", () => {
+    for (const name of ["list_keys", "revoke_key", "mint_key"]) {
+      expect(toolByName(name).description, name).toContain("apiKeyId");
+    }
+    expect(toolByName("list_keys").description).not.toMatch(/\[\{ id,/);
+  });
+});
+
 describe("no tool invents a field the backend cannot see", () => {
   // These are the exact fields that were being silently dropped before this sweep. They must not
   // reappear in any tool's input schema.

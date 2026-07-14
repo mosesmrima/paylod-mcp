@@ -11,8 +11,16 @@ import type { ToolDef } from "./types.js";
  * security defect, not a missing feature.
  *
  * Backed by the backend's /api-keys function:
- *   GET  /api-keys?applicationId=&env=&includeRevoked=  → { keys: [...] }
+ *   GET  /api-keys?applicationId=&env=&includeRevoked=  → { keys: [{ id, ... }] }   ← note: `id`
  *   POST /api-keys/:id/revoke                           → { revoked, apiKeyId, prefix }
+ *
+ * THE TWO BACKEND ROUTES DISAGREE WITH EACH OTHER: the list projection emits `id`, the revoke
+ * response emits `apiKeyId`. An agent told to "list keys, then revoke one" reads `.apiKeyId` off a
+ * listed key, gets `undefined`, and revoke_key's `z.string().uuid()` rejects the call — the advertised
+ * workflow could not succeed. Until the backend is made self-consistent, `list_keys` NORMALIZES the
+ * listed `id` to `apiKeyId` here, so that the field list_keys emits is exactly the field revoke_key
+ * consumes. One word for one thing, across both tools. (Backend fix tracked separately; this mapping
+ * is a superset — if GET later starts returning `apiKeyId` itself, the normalizer is a no-op.)
  *
  * Both require the `paylod:keys.mint` scope (key management IS key surface — see the
  * backend's note: a viewer must not enumerate an org's credential inventory).
@@ -36,6 +44,22 @@ export const listKeysInput = {
 
 const listSchema = z.object(listKeysInput);
 
+/** The backend's GET /api-keys row: `id` plus the camelCase view columns. */
+interface ListKeysResponse {
+  keys?: unknown;
+}
+
+/**
+ * Rename the backend's `id` to `apiKeyId` — the name revoke_key takes and the name this tool
+ * advertises. Any row that already carries `apiKeyId` is passed through untouched.
+ */
+function normalizeKeyRow(row: unknown): unknown {
+  if (typeof row !== "object" || row === null || Array.isArray(row)) return row;
+  const { id, ...rest } = row as Record<string, unknown> & { id?: unknown };
+  if (!("id" in (row as object))) return row;
+  return { apiKeyId: (rest as { apiKeyId?: unknown }).apiKeyId ?? id, ...rest };
+}
+
 export const listKeysTool: ToolDef = {
   name: "list_keys",
   title: "List an application's API keys",
@@ -44,18 +68,21 @@ export const listKeysTool: ToolDef = {
     "List the paylod merchant API keys for an application (GET /api-keys), returning " +
     "{ keys: [{ apiKeyId, applicationId, env, prefix, name, lastUsedAt, revokedAt, createdAt, active }] }. " +
     "Only the key PREFIX is ever returned — the secret is shown exactly once, by mint_key, and can " +
-    "never be read back. Use this to find the apiKeyId of a key you want to kill, then call revoke_key. " +
+    "never be read back. Use this to find the apiKeyId of a key you want to kill, then call revoke_key — " +
+    "the apiKeyId here is exactly the value revoke_key takes. " +
     "Active keys only by default; pass includeRevoked to see the full history. Requires the keys.mint scope.",
   inputSchema: listKeysInput,
   handler: async (client, args) => {
     const input = listSchema.parse(args);
-    return client.request("GET", "/api-keys", {
+    const res = await client.request<ListKeysResponse>("GET", "/api-keys", {
       query: {
         applicationId: input.applicationId,
         ...(input.env ? { env: input.env } : {}),
         ...(input.includeRevoked ? { includeRevoked: "true" } : {}),
       },
     });
+    if (!res || !Array.isArray(res.keys)) return res;
+    return { ...res, keys: res.keys.map(normalizeKeyRow) };
   },
 };
 
