@@ -12,7 +12,11 @@ COPY package.json package-lock.json ./
 RUN npm ci
 
 # Compile TypeScript -> dist/ via tsup.
+# `npm run build` = check-docs-bundle.mjs && tsup, so scripts/ MUST be present or the
+# build dies with ERR_MODULE_NOT_FOUND. Keeping the guard in the image build is the point:
+# a hand-edited src/docs-bundle.ts must fail the deploy, not ship.
 COPY tsconfig.json tsup.config.ts ./
+COPY scripts ./scripts
 COPY src ./src
 RUN npm run build
 
