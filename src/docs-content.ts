@@ -213,13 +213,24 @@ Every Safaricom M-Pesa result/error code is decoded by the **\`decode_mpesa_erro
 offline lookup (no network, no key). Call it on ANY non-zero \`resultCode\`.
 
 It returns \`{ code, title, cause, fix, category, retryable, customerMessage }\`:
-- \`category\` — who is at fault: customer | balance | limit | credentials | network | mpesa_system | success
-- \`retryable\` — whether retrying may help
+- \`category\` — who is at fault: customer | balance | limit | credentials | network | mpesa_system |
+  success | **pending**
+- \`retryable\` — **SAFE TO CHARGE AGAIN** (we know no money moved). It does NOT mean "the user could
+  try again". If \`retryable\` is false, do not re-charge: the payment may still be live, and charging
+  again would double-charge a real customer.
 - \`customerMessage\` — a friendly line you can show the payer
+
+## \`4999\` is NOT a failure
+
+\`4999\` ("still under processing") and \`500.001.1001\` mean the STK prompt is **still live on the
+customer's phone and they have not entered their PIN yet**. The payment can still succeed. Decode
+them as \`category: "pending"\`, \`retryable: false\` — keep polling \`get_payment_status\`, do not show
+the customer a failure, and do not retry (a retry sends a second prompt and can double-charge).
 
 Frequently seen: \`0\` success · \`1\` insufficient balance · \`1001\` a transaction is already in
 process · \`1019\` transaction expired · \`1032\` request cancelled by the user · \`1037\` timeout, user
 could not be reached · \`2001\` **wrong M-Pesa PIN** (a customer error, NOT a credentials problem) ·
+\`4999\`/\`500.001.1001\` **still waiting for the customer's PIN — pending, not failed** ·
 \`1025\`/\`9999\` error sending push / system error · \`17\`/\`26\` M-Pesa system busy.
 
 The full searchable reference is at /docs/errors.`,

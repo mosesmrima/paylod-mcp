@@ -21,9 +21,15 @@ export const decodeErrorTool: ToolDef = {
   description:
     "Turn a cryptic M-Pesa/Daraja ResultCode into a plain-English explanation. PURE and OFFLINE — no " +
     "network call, no API key needed. Returns { code, title, cause, fix, category, retryable, " +
-    "customerMessage }: 'category' says who is at fault (customer/balance/limit/credentials/network/" +
-    "mpesa_system/success), 'retryable' whether retrying may help, and 'customerMessage' is a friendly " +
-    "line you can show the payer. Use this whenever a payment has a non-zero resultCode.",
+    "customerMessage }. 'category' says who is at fault: customer/balance/limit/credentials/network/" +
+    "mpesa_system/success, plus PENDING — and pending is NOT a failure. Codes 4999 and 500.001.1001 " +
+    "mean the STK prompt is still live on the customer's phone and they have not entered their PIN " +
+    "yet; the payment can still succeed, so keep polling get_payment_status and do NOT tell the " +
+    "customer it failed. 'retryable' means SAFE TO CHARGE AGAIN (we know no money moved), NOT merely " +
+    "'the user could try again' — never re-charge a payment when retryable is false, because a " +
+    "pending or indeterminate payment may still complete and you would double-charge a real person. " +
+    "'customerMessage' is a friendly line you can show the payer. Use this whenever a payment has a " +
+    "non-zero resultCode.",
   inputSchema: decodeErrorInput,
   // Not async in spirit, but the ToolDef contract is a Promise — resolve immediately.
   handler: async (_client, args) => {
