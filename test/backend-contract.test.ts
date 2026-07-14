@@ -405,19 +405,46 @@ describe("no tool invents a field the backend cannot see", () => {
     });
   }
 
-  it("request_stk_push string limits match the backend (accountReference 64, description 128)", async () => {
+  /**
+   * accountReference: THREE limits disagreed, and the tool was pinned to the loosest one.
+   *
+   *   Daraja `AccountReference`              — max 12. The hard limit. Safaricom rejects longer.
+   *   paylod POST /collect (API key / SDK)   — z.string().max(12)  ← enforces it
+   *   paylod POST /provider-ops/collect      — z.string().max(64)  ← does not; it just forwards
+   *
+   * provider-ops' 64 is a MISSING GUARD, not permission: a 40-char reference passes paylod's zod
+   * and is rejected by Safaricom one round-trip later as an opaque Daraja error. The tool must
+   * advertise the limit that is true all the way to the handset — 12 — which is also what the SDK
+   * and the docs say. 12 is a strict subset of what provider-ops accepts, so nothing breaks.
+   */
+  it("request_stk_push caps accountReference at 12 — Daraja's hard limit, not provider-ops' 64", async () => {
     const { fetch, calls } = mockFetch({ json: {} });
-    await toolByName("request_stk_push").handler(makeClient({}, fetch), {
-      applicationId: UUID,
-      env: "sandbox",
-      amount: 100,
-      phone: "254712345678",
-      accountReference: "A".repeat(64),
-      description: "D".repeat(128),
-    });
+    const call = (accountReference: string) =>
+      toolByName("request_stk_push").handler(makeClient({}, fetch), {
+        applicationId: UUID,
+        env: "sandbox",
+        amount: 100,
+        phone: "254712345678",
+        accountReference,
+        description: "D".repeat(128),
+      });
+
+    await call("A".repeat(12));
     const sent = JSON.parse(calls[0]!.body!) as { accountReference: string; description: string };
-    expect(sent.accountReference.length).toBe(64);
+    expect(sent.accountReference.length).toBe(12);
     expect(sent.description.length).toBe(128);
+
+    // 13 chars is what Daraja rejects, so the tool must reject it first — in the agent's own
+    // stack trace, not as a 502 from Safaricom.
+    await expect(call("A".repeat(13))).rejects.toThrow();
+  });
+
+  it("request_stk_push does not declare `metadata` — /provider-ops/collect would drop it", () => {
+    // The SDK's collect() DOES take `metadata` (POST /collect models it and echoes it on the
+    // webhook). provider-ops/collect does not: it inserts `metadata: {}`. Declaring the field here
+    // would be the exact silent-drop this file exists to prevent, so the tool omits it and says so.
+    expect(Object.keys(toolByName("request_stk_push").inputSchema)).not.toContain("metadata");
+    expect(toolByName("request_stk_push").description).toMatch(/metadata/);
   });
 
   it("request_stk_push sends idempotencyKey as the Idempotency-Key HEADER, not in the body", async () => {
