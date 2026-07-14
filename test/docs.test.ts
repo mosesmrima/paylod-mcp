@@ -45,6 +45,15 @@ describe("get_docs", () => {
     expect(res.content).toContain("double-charge");
   });
 
+  // Safaricom only surfaces AccountReference on a Paybill; a Till never shows it. Most Kenyan
+  // merchants are on a Till, so "the customer sees it" was wrong for the majority of readers.
+  it("does not claim the customer sees accountReference", async () => {
+    const res = await ask({ topic: "payments" });
+    expect(res.content).not.toMatch(/shown on the (handset|prompt) and the statement/i);
+    expect(res.content).toContain("correlation id");
+    expect(res.content).toContain("Till");
+  });
+
   it("keeps the API key server-side", async () => {
     const res = await ask({ topic: "security" });
     expect(res.content).toMatch(/never|not/i);
