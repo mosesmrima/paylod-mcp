@@ -53,6 +53,45 @@ export function mockFetch(response: MockResponse = {}): {
   return { fetch, calls };
 }
 
+/**
+ * Build a mock fetch that returns a DIFFERENT canned response per call, in order.
+ * Needed by tools that chain calls (get_payment_status: GET /payments/:id → POST
+ * /provider-ops/status). Running past the end of the sequence throws, so a test that
+ * makes an unexpected extra request fails loudly instead of silently reusing a response.
+ */
+export function mockFetchSequence(responses: MockResponse[]): {
+  fetch: FetchLike;
+  calls: RecordedCall[];
+} {
+  const calls: RecordedCall[] = [];
+
+  const fetch: FetchLike = async (url, init) => {
+    calls.push({
+      url,
+      method: init.method,
+      headers: init.headers,
+      ...(init.body !== undefined ? { body: init.body } : {}),
+    });
+    const response = responses[calls.length - 1];
+    if (!response) {
+      throw new Error(`mockFetchSequence: unexpected call #${calls.length} to ${init.method} ${url}`);
+    }
+    const status = response.status ?? 200;
+    const ok = response.ok ?? (status >= 200 && status < 300);
+    const bodyText =
+      response.text ?? (response.json !== undefined ? JSON.stringify(response.json) : "");
+    const headers = response.headers ?? {};
+    return {
+      status,
+      ok,
+      headers: { get: (name: string) => headers[name] ?? headers[name.toLowerCase()] ?? null },
+      text: async () => bodyText,
+    };
+  };
+
+  return { fetch, calls };
+}
+
 /** A full server {@link Config} pointed at the in-test seam values. */
 export function makeConfig(overrides: Partial<Config> = {}): Config {
   return {

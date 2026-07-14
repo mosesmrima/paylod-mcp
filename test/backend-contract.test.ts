@@ -105,12 +105,15 @@ const BACKEND: Record<string, Contract> = {
     body: ["applicationId", "env", "phone", "amount", "accountReference", "description"],
     required: ["applicationId", "env", "phone", "amount"],
   },
-  get_payment_status: {
-    method: "POST",
-    path: "/provider-ops/status",
-    body: ["applicationId", "env", "paymentId"],
-    required: ["applicationId", "env", "paymentId"],
-  },
+  // get_payment_status is deliberately NOT here — it is a CHAINED tool (GET /payments/:id to resolve
+  // + authorize, then POST /provider-ops/status to settle). The single-call driver below cannot model
+  // it; it is pinned in its own describe block ("get_payment_status resolves ...").
+
+  // supabase/functions/api-keys/index.ts — GET /?applicationId=&env=&includeRevoked=
+  list_keys: { method: "GET", path: "/api-keys", body: [], required: [] },
+
+  // supabase/functions/api-keys/index.ts — POST /:id/revoke (id in the PATH, no body at all)
+  revoke_key: { method: "POST", path: "/api-keys/:id/revoke", body: [], required: [] },
   generate_qr: {
     method: "POST",
     path: "/provider-ops/qr",
@@ -213,7 +216,8 @@ const MAX_ARGS: Record<string, Record<string, unknown>> = {
     description: "Test payment",
     idempotencyKey: "idem-1",
   },
-  get_payment_status: { applicationId: UUID, env: "sandbox", paymentId: UUID },
+  list_keys: { applicationId: UUID, env: "production", includeRevoked: true },
+  revoke_key: { apiKeyId: UUID },
   generate_qr: {
     applicationId: UUID,
     env: "sandbox",
@@ -273,6 +277,13 @@ describe("every networked tool matches its backend edge function", () => {
 
       if (contract.method === "GET") {
         expect(call.body).toBeUndefined();
+        return;
+      }
+
+      // A POST whose backend schema has NO body (revoke_key — the id is a path segment) must send
+      // no body at all.
+      if (contract.body.length === 0) {
+        expect(call.body, `${name} must not send a body to ${contract.path}`).toBeUndefined();
         return;
       }
 

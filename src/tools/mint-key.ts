@@ -20,9 +20,12 @@ export const mintKeyTool: ToolDef = {
   scope: SCOPES.keysMint,
   description:
     "Mint a NEW paylod merchant API key for an application (POST /mint-key), returning " +
-    "{ apiKey, prefix, env }. The plaintext apiKey is shown ONCE — store it securely. HIGH-RISK: " +
-    "requires the keys.mint scope. Use this to hand a long-lived REST key to a non-agent integration; " +
-    "the MCP server itself never uses API keys.",
+    "{ apiKey, prefix, env }. The plaintext apiKey is shown ONCE — store it securely; it can never be " +
+    "read back (list_keys returns prefixes only). HIGH-RISK: requires the keys.mint scope. Use this to " +
+    "hand a long-lived REST key to a non-agent integration; the MCP server itself never uses API keys. " +
+    "`env` defaults to 'sandbox' — you must ask for 'production' explicitly, because a production key " +
+    "moves real money. Minted a key you no longer need (a demo, a test)? Call list_keys to find its " +
+    "apiKeyId and revoke_key to kill it.",
   inputSchema: mintKeyInput,
   handler: async (client, args) => {
     const body = schema.parse(args);
