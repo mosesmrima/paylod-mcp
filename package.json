@@ -26,6 +26,9 @@
   },
   "license": "MIT",
   "author": "paylod / Moses Mrima",
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "mcpName": "io.github.paylod/mcp",
   "bin": {
