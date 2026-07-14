@@ -4,7 +4,10 @@
 # ---------------------------------------------------------------------------
 
 # --- build stage ----------------------------------------------------------
-FROM node:22-alpine AS build
+# node:24 (not 22) because the docs drift guard imports the REAL TypeScript tool definition to
+# assert `get_docs`'s topic enum still derives from the bundle. That needs Node's type stripping
+# on by default, which is 22.18+/24. Only the BUILD stage — the runtime ships compiled dist/.
+FROM node:24-alpine AS build
 WORKDIR /app
 
 # Install all deps (incl. dev) against the lockfile for a reproducible build.
