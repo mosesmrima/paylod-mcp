@@ -39,9 +39,12 @@ export const simulateCollectTool: ToolDef = {
   scope: SCOPES.paymentsSimulate,
   description:
     "Create a SIMULATED M-Pesa collection in the paylod sandbox (POST /simulate/collect). No real STK " +
-    "prompt is sent and no money moves. Returns { paymentId, checkoutRequestId, status: 'pending', " +
-    "provider, outcomes[] } where outcomes[] lists the resolutions you can force next via simulate_outcome " +
-    "(approve, wrong_pin, insufficient_funds, user_cancelled, timeout). Requires the payments.simulate scope.",
+    "prompt is sent and no money moves. Returns (HTTP 202) { paymentId, checkoutRequestId, " +
+    "status: 'pending', provider, outcomes } where `outcomes` is an ARRAY OF OBJECTS, each " +
+    "{ id, label, status } — NOT an array of strings. Pass an outcome's `id` (e.g. 'approve', " +
+    "'wrong_pin', 'insufficient_funds', 'user_cancelled', 'timeout') as the `outcome` argument of " +
+    "simulate_outcome to force that resolution; `label` is the human text and `status` the payment " +
+    "status it settles to ('success' or 'failed'). Requires the payments.simulate scope.",
   inputSchema: simulateCollectInput,
   handler: async (client, args) => {
     const body = collectSchema.parse(args);

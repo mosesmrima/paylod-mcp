@@ -20,25 +20,28 @@ export const collectInput = {
   phone: phoneSchema.describe(
     "Customer's Safaricom M-Pesa number. Accepts 2547XXXXXXXX, 07XXXXXXXX, or +2547XXXXXXXX.",
   ),
+  // Backend truth (provider-ops POST /collect): accountReference max 64, description max 128.
+  // These were 12 / 64 here, so the tool rejected references the API accepts.
   accountReference: z
-    .string()
-    .min(1)
-    .max(12)
-    .optional()
-    .describe("Short account/order reference the customer sees (1–12 chars). Defaults to 'collect'."),
-  description: z
     .string()
     .min(1)
     .max(64)
     .optional()
-    .describe("Short payment description (1–64 chars). Defaults to 'Payment'."),
+    .describe("Account/order reference the customer sees (1–64 chars). Defaults to 'collect'."),
+  description: z
+    .string()
+    .min(1)
+    .max(128)
+    .optional()
+    .describe("Short payment description (1–128 chars). Defaults to 'Payment'."),
   idempotencyKey: z
     .string()
     .min(1)
     .optional()
     .describe(
-      "Idempotency key: reuse the SAME key to safely retry without double-charging. " +
-        "Sent as the Idempotency-Key header. A duplicate key with a different body is rejected (409).",
+      "Idempotency key: reuse the SAME key to safely retry without double-charging. Sent as the " +
+        "Idempotency-Key header; the backend replays the original 202 response instead of pushing a " +
+        "second STK. Reusing a key with a DIFFERENT body is rejected (409).",
     ),
 } as const;
 

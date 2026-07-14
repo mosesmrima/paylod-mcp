@@ -3,14 +3,15 @@ import { SCOPES } from "../scopes.js";
 import { applicationIdField, envField } from "./common.js";
 import type { ToolDef } from "./types.js";
 
+/**
+ * Backend truth: supabase/functions/provider-ops/index.ts → POST /account-balance parses
+ * `baseSchema` ONLY ({ applicationId, env }). It hardcodes identifierType "4" and sends no
+ * remarks. This tool used to declare `identifierType` and `remarks`; zod strips unknown keys,
+ * so the backend silently DROPPED them — the agent believed it had set something it had not.
+ */
 export const accountBalanceInput = {
   applicationId: applicationIdField,
   env: envField,
-  identifierType: z
-    .enum(["1", "2", "4"])
-    .optional()
-    .describe("M-Pesa identifier type: '1' MSISDN, '2' Till, '4' Shortcode (default '4')."),
-  remarks: z.string().optional().describe("Optional remarks attached to the balance query."),
 } as const;
 
 const schema = z.object(accountBalanceInput);
@@ -22,8 +23,9 @@ export const accountBalanceTool: ToolDef = {
   description:
     "Query the merchant's M-Pesa account balance (POST /provider-ops/account-balance). ASYNCHRONOUS: " +
     "returns { queryId, conversationId } with HTTP 202; the actual balance is delivered later to the " +
-    "merchant's results callback — not returned directly. Requires the payments.read scope and a " +
-    "configured initiator name + password.",
+    "merchant's results callback — not returned directly. The query always uses M-Pesa identifier " +
+    "type '4' (Shortcode); this is fixed by the backend and not configurable. Requires the " +
+    "payments.read scope and a configured initiator name + password.",
   inputSchema: accountBalanceInput,
   handler: async (client, args) => {
     const body = schema.parse(args);

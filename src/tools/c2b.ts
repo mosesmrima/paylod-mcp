@@ -16,8 +16,9 @@ export const registerC2bTool: ToolDef = {
   scope: SCOPES.paymentsCollect,
   description:
     "Register the C2B validation/confirmation URLs for an application's shortcode with Safaricom (POST " +
-    "/provider-ops/c2b-register). Returns { registered, shortcode, confirmationUrl, responseCode }. " +
-    "Requires the payments.collect scope.",
+    "/provider-ops/c2b-register). Returns { registered, shortcode, confirmationUrl, responseCode, " +
+    "responseDescription }. paylod hosts the confirmation/validation receiver, so you write no C2B " +
+    "callback code. Requires the payments.collect scope.",
   inputSchema: registerC2bInput,
   handler: async (client, args) => {
     const body = schema.parse(args);

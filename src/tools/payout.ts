@@ -23,7 +23,7 @@ export const payoutInput = {
     .optional()
     .describe("B2C command type (default 'BusinessPayment')."),
   remarks: z.string().max(100).optional().describe("Optional remarks (≤100 chars)."),
-  occasion: z.string().max(100).optional().describe("Optional occasion note (≤100 chars)."),
+  // NOTE: no `occasion` — provider-ops POST /payout does not model it (it was silently dropped).
 } as const;
 
 const schema = z.object(payoutInput);

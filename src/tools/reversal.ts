@@ -18,7 +18,7 @@ export const reversalInput = {
     .max(150000)
     .describe("Amount to reverse in KES."),
   remarks: z.string().max(100).optional().describe("Optional remarks (≤100 chars)."),
-  occasion: z.string().max(100).optional().describe("Optional occasion note (≤100 chars)."),
+  // NOTE: no `occasion` — provider-ops POST /reversal does not model it (it was silently dropped).
 } as const;
 
 const schema = z.object(reversalInput);

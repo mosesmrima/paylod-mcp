@@ -25,7 +25,7 @@ export const qrInput = {
     .min(1)
     .optional()
     .describe("Credit Party Identifier (till/paybill/phone). Defaults to the tenant shortcode."),
-  size: z.string().min(1).optional().describe("Requested QR image size in pixels (as a string)."),
+  // NOTE: no `size` — provider-ops POST /qr does not model it (it was silently dropped).
 } as const;
 
 const schema = z.object(qrInput);
