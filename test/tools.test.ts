@@ -12,6 +12,8 @@ import { reversalTool } from "../src/tools/reversal.js";
 import { simulateCollectTool, simulateOutcomeTool } from "../src/tools/simulate.js";
 import { mintKeyTool } from "../src/tools/mint-key.js";
 import { createAppTool } from "../src/tools/provision.js";
+import { createApplicationTool, getCallbackUrlTool } from "../src/tools/applications.js";
+import { getDocsTool } from "../src/tools/docs.js";
 import { setCredentialsTool } from "../src/tools/credentials.js";
 import { listApplicationsTool } from "../src/tools/apps.js";
 import { authenticateTool } from "../src/tools/authenticate.js";
@@ -23,13 +25,15 @@ const UUID = "11111111-2222-3333-4444-555555555555";
 const BASE = "https://paylod.dev/functions/v1";
 
 describe("tool surface", () => {
-  it("exposes exactly the 18 contract tools", () => {
-    expect(ALL_TOOLS.length).toBe(18);
+  it("exposes exactly the 21 contract tools", () => {
+    expect(ALL_TOOLS.length).toBe(21);
     const names = new Set(ALL_TOOLS.map((t) => t.name));
     for (const n of [
       "authenticate",
       "list_applications",
       "create_app",
+      "create_application",
+      "get_callback_url",
       "set_credentials",
       "mint_key",
       "configure_webhook",
@@ -45,6 +49,7 @@ describe("tool surface", () => {
       "simulate_test_payment",
       "simulate_outcome",
       "decode_mpesa_error",
+      "get_docs",
     ]) {
       expect(names.has(n)).toBe(true);
     }
@@ -54,8 +59,12 @@ describe("tool surface", () => {
     const scopeOf = Object.fromEntries(ALL_TOOLS.map((t) => [t.name, t.scope]));
     expect(scopeOf.authenticate).toBeUndefined();
     expect(scopeOf.decode_mpesa_error).toBeUndefined();
+    expect(scopeOf.get_docs).toBeUndefined();
     expect(scopeOf.list_applications).toBe(SCOPES.teamRead);
     expect(scopeOf.create_app).toBe(SCOPES.appsWrite);
+    expect(scopeOf.create_application).toBe(SCOPES.appsWrite);
+    // apps.write (not a read scope): the callback token is a bearer-equivalent secret.
+    expect(scopeOf.get_callback_url).toBe(SCOPES.appsWrite);
     expect(scopeOf.set_credentials).toBe(SCOPES.credentialsWrite);
     expect(scopeOf.mint_key).toBe(SCOPES.keysMint);
     expect(scopeOf.configure_webhook).toBe(SCOPES.webhooksWrite);
@@ -108,7 +117,7 @@ describe("tool → endpoint mapping", () => {
     await setCredentialsTool.handler(makeClient({}, fetch), {
       applicationId: UUID,
       env: "sandbox",
-      product: "stk",
+      product: "paybill",
       consumerKey: "ck",
       consumerSecret: "cs",
       passkey: "pk",
@@ -277,5 +286,161 @@ describe("tool → endpoint mapping", () => {
     };
     expect(calls.length).toBe(0);
     expect(res.code).toBe("1032");
+  });
+});
+
+/**
+ * Regression suite for the schema drift found against the LIVE deployment: MCP zod enums that no
+ * value could satisfy, because they described the Daraja API (stk/c2b/b2c/qr) while the backend
+ * validates the shortcode KIND (paybill/till). Every case below is pinned to the backend source.
+ */
+describe("backend schema parity (regression)", () => {
+  it("create_app product accepts the backend enum paybill|till and rejects the old stk|c2b|b2c|qr", async () => {
+    const { fetch, calls } = mockFetch({ status: 201, json: { applicationId: UUID } });
+    await createAppTool.handler(makeClient({}, fetch), {
+      organizationName: "Acme",
+      applicationName: "Checkout",
+      product: "till",
+    });
+    expect(JSON.parse(calls[0]!.body!).product).toBe("till");
+
+    for (const product of ["stk", "c2b", "b2c", "qr"]) {
+      await expect(
+        createAppTool.handler(makeClient({}, mockFetch().fetch), {
+          organizationName: "Acme",
+          applicationName: "Checkout",
+          product,
+        }),
+      ).rejects.toThrow();
+    }
+  });
+
+  it("set_credentials product accepts paybill|till and rejects the old API-name enum", async () => {
+    const { fetch, calls } = mockFetch({ json: {} });
+    await setCredentialsTool.handler(makeClient({}, fetch), {
+      applicationId: UUID,
+      env: "sandbox",
+      product: "till",
+      consumerKey: "ck",
+      consumerSecret: "cs",
+      passkey: "pk",
+      shortcode: "174379",
+      partyB: "600000",
+    });
+    expect(JSON.parse(calls[0]!.body!).product).toBe("till");
+
+    await expect(
+      setCredentialsTool.handler(makeClient({}, mockFetch().fetch), {
+        applicationId: UUID,
+        env: "sandbox",
+        product: "stk",
+        consumerKey: "ck",
+        consumerSecret: "cs",
+        passkey: "pk",
+        shortcode: "174379",
+      }),
+    ).rejects.toThrow();
+  });
+
+  it("create_app credentials mirror the backend object shape (not a loose record)", async () => {
+    await expect(
+      createAppTool.handler(makeClient({}, mockFetch().fetch), {
+        organizationName: "Acme",
+        applicationName: "Checkout",
+        // Missing passkey + shortcode — the backend's credentialsSchema requires them.
+        credentials: { consumerKey: "ck", consumerSecret: "cs" },
+      }),
+    ).rejects.toThrow();
+  });
+});
+
+describe("create_application + get_callback_url", () => {
+  it("create_application → POST /applications (org inferred when omitted)", async () => {
+    const { fetch, calls } = mockFetch({
+      status: 201,
+      json: { applicationId: UUID, callbackUrl: "https://paylod.dev/functions/v1/callback/cbk_x" },
+    });
+    await createApplicationTool.handler(makeClient({}, fetch), { name: "Second App", product: "till" });
+    expect(calls[0]!.method).toBe("POST");
+    expect(calls[0]!.url).toBe(`${BASE}/applications`);
+    const body = JSON.parse(calls[0]!.body!);
+    expect(body).toEqual({ name: "Second App", product: "till" });
+  });
+
+  it("create_application forwards an explicit organizationId and rejects a non-UUID one", async () => {
+    const { fetch, calls } = mockFetch({ status: 201, json: {} });
+    await createApplicationTool.handler(makeClient({}, fetch), { name: "In B", organizationId: UUID });
+    expect(JSON.parse(calls[0]!.body!).organizationId).toBe(UUID);
+
+    await expect(
+      createApplicationTool.handler(makeClient({}, mockFetch().fetch), {
+        name: "Bad",
+        organizationId: "nope",
+      }),
+    ).rejects.toThrow();
+  });
+
+  it("get_callback_url → GET /applications/:id/callback-url?env=", async () => {
+    const { fetch, calls } = mockFetch({
+      json: { callbackUrl: "https://paylod.dev/functions/v1/callback/cbk_x", env: "production" },
+    });
+    await getCallbackUrlTool.handler(makeClient({}, fetch), {
+      applicationId: UUID,
+      env: "production",
+    });
+    expect(calls[0]!.method).toBe("GET");
+    expect(calls[0]!.url).toBe(`${BASE}/applications/${UUID}/callback-url?env=production`);
+    expect(calls[0]!.body).toBeUndefined();
+  });
+
+  it("get_callback_url omits env when not supplied (backend defaults it)", async () => {
+    const { fetch, calls } = mockFetch({ json: {} });
+    await getCallbackUrlTool.handler(makeClient({}, fetch), { applicationId: UUID });
+    expect(calls[0]!.url).toBe(`${BASE}/applications/${UUID}/callback-url`);
+  });
+
+  it("get_callback_url rejects a bad applicationId / env", async () => {
+    await expect(
+      getCallbackUrlTool.handler(makeClient({}, mockFetch().fetch), { applicationId: "nope" }),
+    ).rejects.toThrow();
+    await expect(
+      getCallbackUrlTool.handler(makeClient({}, mockFetch().fetch), {
+        applicationId: UUID,
+        env: "staging",
+      }),
+    ).rejects.toThrow();
+  });
+});
+
+describe("get_docs", () => {
+  it("is local (no network) and answers the integration question", async () => {
+    const { fetch, calls } = mockFetch();
+    const res = (await getDocsTool.handler(makeClient({}, fetch), {
+      query: "how do I integrate M-Pesa with paylod",
+    })) as { topic: string; content: string; availableTopics: string[] };
+    expect(calls.length).toBe(0);
+    expect(res.topic).toBe("integration");
+    expect(res.content).toContain("get_callback_url");
+    expect(res.availableTopics).toContain("callback-url");
+  });
+
+  it("routes free text to the right topic", async () => {
+    const client = makeClient({}, mockFetch().fetch);
+    const ask = async (query: string) =>
+      ((await getDocsTool.handler(client, { query })) as { topic: string }).topic;
+    expect(await ask("how do I verify a webhook signature")).toBe("webhooks");
+    expect(await ask("what callback url do I paste into the daraja portal")).toBe("callback-url");
+    expect(await ask("what does resultCode 1032 mean")).toBe("errors");
+  });
+
+  it("honours an explicit topic, defaults to integration, and rejects an unknown topic", async () => {
+    const client = makeClient({}, mockFetch().fetch);
+    const explicit = (await getDocsTool.handler(client, { topic: "security" })) as { topic: string };
+    expect(explicit.topic).toBe("security");
+
+    const empty = (await getDocsTool.handler(client, {})) as { topic: string };
+    expect(empty.topic).toBe("integration");
+
+    await expect(getDocsTool.handler(client, { topic: "nonsense" })).rejects.toThrow();
   });
 });

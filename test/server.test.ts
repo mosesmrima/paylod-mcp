@@ -4,7 +4,7 @@ import { SCOPES } from "../src/scopes.js";
 import { makeClient } from "./helpers.js";
 
 describe("buildMcpServer", () => {
-  it("returns a connectable McpServer with all 18 tools registered", () => {
+  it("returns a connectable McpServer with all 21 tools registered", () => {
     const server = buildMcpServer(makeClient());
     expect(typeof server.connect).toBe("function");
   });
