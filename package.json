@@ -18,11 +18,11 @@
   ],
   "homepage": "https://paylod.dev",
   "bugs": {
-    "url": "https://github.com/paylod/mcp/issues"
+    "url": "https://github.com/mosesmrima/paylod-mcp/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/paylod/mcp.git"
+    "url": "git+https://github.com/mosesmrima/paylod-mcp.git"
   },
   "license": "MIT",
   "author": "paylod / Moses Mrima",
