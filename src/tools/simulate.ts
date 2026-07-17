@@ -1,5 +1,7 @@
 import { z } from "zod";
 import { SCOPES } from "../scopes.js";
+import { phoneSchema } from "../phone.js";
+import { MAX_ACCOUNT_REF_LEN, MAX_AMOUNT_KES } from "../limits.js";
 import { applicationIdField } from "./common.js";
 import type { ToolDef } from "./types.js";
 
@@ -9,10 +11,6 @@ import type { ToolDef } from "./types.js";
  * is what unblocks agent-native testing (contract §6.1).
  */
 
-const phoneSchema = z
-  .string()
-  .regex(/^(?:\+?254|0)?[17]\d{8}$/, "Must be a Kenyan Safaricom number, e.g. 254712345678");
-
 export const simulateCollectInput = {
   applicationId: applicationIdField,
   phone: phoneSchema.describe("A test Safaricom number for the simulated STK push."),
@@ -20,15 +18,15 @@ export const simulateCollectInput = {
     .number()
     .int()
     .positive()
-    .max(150000)
+    .max(MAX_AMOUNT_KES)
     .optional()
     .describe("Amount in KES (default 1). No real money moves — sandbox only."),
   accountRef: z
     .string()
     .min(1)
-    .max(32)
+    .max(MAX_ACCOUNT_REF_LEN)
     .optional()
-    .describe("Account reference (1–32 chars). Default 'SIMULATED'."),
+    .describe(`Account reference (1–${MAX_ACCOUNT_REF_LEN} chars). Default 'SIMULATED'.`),
 } as const;
 
 const collectSchema = z.object(simulateCollectInput);

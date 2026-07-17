@@ -1,17 +1,28 @@
 import { z } from "zod";
 import { SCOPES } from "../scopes.js";
+import { MAX_AMOUNT_KES, MAX_MERCHANT_NAME_LEN, MAX_QR_REF_LEN } from "../limits.js";
 import { applicationIdField, envField } from "./common.js";
 import type { ToolDef } from "./types.js";
 
 export const qrInput = {
   applicationId: applicationIdField,
   env: envField,
-  amount: z.number().positive().describe("Amount in KES to encode into the QR code."),
-  refNo: z.string().min(1).max(64).optional().describe("Payment reference (1–64 chars). Default 'QR'."),
+  amount: z
+    .number()
+    .int("Amount must be a whole number of KES")
+    .positive()
+    .max(MAX_AMOUNT_KES, `M-Pesa caps a QR amount at ${MAX_AMOUNT_KES} KES`)
+    .describe(`Amount in KES to encode into the QR code (whole number, 1–${MAX_AMOUNT_KES}).`),
+  refNo: z
+    .string()
+    .min(1)
+    .max(MAX_QR_REF_LEN)
+    .optional()
+    .describe(`Payment reference (1–${MAX_QR_REF_LEN} chars). Default 'QR'.`),
   merchantName: z
     .string()
     .min(1)
-    .max(64)
+    .max(MAX_MERCHANT_NAME_LEN)
     .optional()
     .describe("Merchant name shown to the payer. Defaults to the tenant shortcode."),
   trxCode: z

@@ -1,12 +1,9 @@
 import { z } from "zod";
 import { SCOPES } from "../scopes.js";
+import { phoneSchema } from "../phone.js";
+import { MAX_ACCOUNT_REF_LEN, MAX_AMOUNT_KES, MAX_DESCRIPTION_LEN } from "../limits.js";
 import { applicationIdField, envField } from "./common.js";
 import type { ToolDef } from "./types.js";
-
-/** Kenyan MSISDN accepted by paylod (the backend normalizes it). */
-const phoneSchema = z
-  .string()
-  .regex(/^(?:\+?254|0)?[17]\d{8}$/, "Must be a Kenyan Safaricom number, e.g. 254712345678 or 0712345678");
 
 export const collectInput = {
   applicationId: applicationIdField,
@@ -15,8 +12,8 @@ export const collectInput = {
     .number()
     .int("Amount must be a whole number of KES")
     .positive()
-    .max(150000, "M-Pesa STK push caps at 150,000 KES")
-    .describe("Amount to charge in Kenyan Shillings (KES), whole number, 1–150000."),
+    .max(MAX_AMOUNT_KES, `M-Pesa STK push caps at ${MAX_AMOUNT_KES} KES`)
+    .describe(`Amount to charge in Kenyan Shillings (KES), whole number, 1–${MAX_AMOUNT_KES}.`),
   phone: phoneSchema.describe(
     "Customer's Safaricom M-Pesa number. Accepts 2547XXXXXXXX, 07XXXXXXXX, or +2547XXXXXXXX.",
   ),
@@ -34,7 +31,7 @@ export const collectInput = {
   accountReference: z
     .string()
     .min(1)
-    .max(12)
+    .max(MAX_ACCOUNT_REF_LEN)
     .optional()
     .describe(
       "Your correlation id for this payment (1–12 chars — Safaricom's hard limit on " +
@@ -46,9 +43,9 @@ export const collectInput = {
   description: z
     .string()
     .min(1)
-    .max(128)
+    .max(MAX_DESCRIPTION_LEN)
     .optional()
-    .describe("Short payment description (1–128 chars). Defaults to 'Payment'."),
+    .describe(`Short payment description (1–${MAX_DESCRIPTION_LEN} chars). Defaults to 'Payment'.`),
   idempotencyKey: z
     .string()
     .min(1)

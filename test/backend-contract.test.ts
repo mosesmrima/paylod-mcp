@@ -501,17 +501,56 @@ describe("no tool invents a field the backend cannot see", () => {
         amount: 100,
         phone: "254712345678",
         accountReference,
-        description: "D".repeat(128),
+        description: "D".repeat(64),
       });
 
     await call("A".repeat(12));
     const sent = JSON.parse(calls[0]!.body!) as { accountReference: string; description: string };
     expect(sent.accountReference.length).toBe(12);
-    expect(sent.description.length).toBe(128);
+    expect(sent.description.length).toBe(64);
 
     // 13 chars is what Daraja rejects, so the tool must reject it first — in the agent's own
     // stack trace, not as a 502 from Safaricom.
     await expect(call("A".repeat(13))).rejects.toThrow();
+  });
+
+  // TD-08: the tool bounds must match the backend's zod, not exceed it. `description` is capped at
+  // 64 by the shared collect schema (_shared/schemas/collect.ts); the tool used to allow 128, so a
+  // 65–128 char value passed the tool and 422'd at the backend. Pin the corrected bound.
+  it("request_stk_push caps description at 64 — matching the backend's shared collect schema", async () => {
+    const { fetch, calls } = mockFetch({ json: {} });
+    const call = (description: string) =>
+      toolByName("request_stk_push").handler(makeClient({}, fetch), {
+        applicationId: UUID,
+        env: "sandbox",
+        amount: 100,
+        phone: "254712345678",
+        description,
+      });
+
+    await call("D".repeat(64));
+    const sent = JSON.parse(calls[0]!.body!) as { description: string };
+    expect(sent.description.length).toBe(64);
+
+    await expect(call("D".repeat(65))).rejects.toThrow();
+  });
+
+  // TD-08: generate_qr amount must be a whole KES ≤ 150000, matching provider-ops /qr. It used to
+  // be a bare `z.number().positive()`, so a decimal or a 10^9 value passed the tool and failed later.
+  it("generate_qr requires a whole-KES amount ≤ 150000 (matches provider-ops /qr)", async () => {
+    const qr = toolByName("generate_qr");
+    const client = makeClient({}, mockFetch({ json: {} }).fetch);
+    await expect(qr.handler(client, { applicationId: UUID, env: "sandbox", amount: 1.5 })).rejects.toThrow();
+    await expect(qr.handler(client, { applicationId: UUID, env: "sandbox", amount: 150_001 })).rejects.toThrow();
+  });
+
+  // TD-08: simulate_test_payment accountRef must match the backend's 12-char cap, not the old 32.
+  it("simulate_test_payment caps accountRef at 12 (matches simulate/index.ts)", async () => {
+    const sim = toolByName("simulate_test_payment");
+    const client = makeClient({}, mockFetch({ json: {} }).fetch);
+    await expect(
+      sim.handler(client, { applicationId: UUID, phone: "254712345678", accountRef: "A".repeat(13) }),
+    ).rejects.toThrow();
   });
 
   it("request_stk_push does not declare `metadata` — /provider-ops/collect would drop it", () => {
