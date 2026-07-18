@@ -24,14 +24,11 @@
  */
 
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { spawnSync } from "node:child_process";
-import { register } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-
-// Lets `node` follow the NodeNext ".js" specifiers in our TS sources (../docs-bundle.js → .ts).
-register("./ts-resolve-hook.mjs", import.meta.url);
+import { build } from "esbuild";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const FILE = join(ROOT, "src/docs-bundle.ts");
@@ -67,8 +64,39 @@ if (recorded !== actual) {
 // (2) The published tool schema must still BE the bundle, not a copy of it.
 // ---------------------------------------------------------------------------
 
-const { DOC_TOPICS } = await import(pathToFileURL(join(ROOT, "src/docs-bundle.ts")).href);
-const { getDocsTool } = await import(pathToFileURL(join(ROOT, "src/tools/docs.ts")).href);
+// We need the RUNTIME values (DOC_TOPICS, and the real zod schema on getDocsTool), so the TS has
+// to be executed, not merely parsed. Node's own type-stripping would do it, but only on >= 22.6,
+// and our NodeNext sources import "../docs-bundle.js" — a specifier that does not exist on disk
+// until tsup runs — so it also needed a custom resolve hook. That combination silently pinned
+// `npm run build` to Node 22 and broke it on 20 (ERR_UNKNOWN_FILE_EXTENSION).
+//
+// esbuild compiles the same sources on every supported Node, and applies TypeScript's own
+// ".js" -> ".ts" resolution, which is what the hook was hand-rolling. `packages: "external"`
+// leaves zod & co. to normal resolution, so the output must sit inside the project to resolve
+// them — node_modules/.cache is already gitignored.
+const CACHE = join(ROOT, "node_modules/.cache/paylod-docs-check");
+const compiled = join(CACHE, "entry.mjs");
+mkdirSync(CACHE, { recursive: true });
+
+await build({
+  stdin: {
+    contents:
+      'export { DOC_TOPICS } from "../../../src/docs-bundle.js";\n' +
+      'export { getDocsTool } from "../../../src/tools/docs.js";\n',
+    resolveDir: CACHE,
+    loader: "ts",
+    sourcefile: "check-docs-bundle-entry.ts",
+  },
+  bundle: true,
+  platform: "node",
+  format: "esm",
+  packages: "external",
+  outfile: compiled,
+  logLevel: "silent",
+});
+
+const { DOC_TOPICS, getDocsTool } = await import(pathToFileURL(compiled).href);
+rmSync(CACHE, { recursive: true, force: true });
 
 /** What the enum MUST be, straight from the generated bundle. */
 const wantTopics = [

@@ -13,8 +13,20 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
+      # MUST stay in sync with `engines.node` in package.json (>=20). Testing a version we do not
+      # claim is noise; claiming a version we do not test is a lie.
+      #
+      # Node 18 was dropped deliberately, and NOT merely because a test helper broke on it. The
+      # SHIPPED code fails there: `jose` verifies our ES256 access tokens via WebCrypto, which it
+      # reaches through `globalThis.crypto` — a global that only exists from Node 19 (Node 18 has
+      # it only as `require("node:crypto").webcrypto`). Verified against a valid, correctly signed
+      # token on v18.20.8: jose throws `ReferenceError: crypto is not defined`, and because
+      # TokenVerifier.verify() catches broadly to avoid leaking why a token failed, that surfaces
+      # as `UnauthorizedError: invalid or expired token`. The server therefore does not crash on
+      # Node 18 — it starts, then silently rejects EVERY valid token. Same token verifies fine on
+      # 20, 22 and 24.
       matrix:
-        node-version: [18, 20, 22]
+        node-version: [20, 22, 24]
     steps:
       - uses: actions/checkout@v4
 
