@@ -1,10 +1,12 @@
 name: CI
 
+# NOTE ON BRANCHES: this repo's default branch is `feat/oauth-http`, not `main` or `master`.
+# These triggers must name a branch that actually exists or the workflow never fires.
 on:
   push:
-    branches: [main]
+    branches: [feat/oauth-http]
   pull_request:
-    branches: [main]
+    branches: [feat/oauth-http]
 
 jobs:
   build:
