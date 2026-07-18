@@ -20,8 +20,8 @@ name: Release
 #
 # NOTE ON BRANCHES: this repo's default branch is `feat/oauth-http`, not `master`. For `release`
 # events GitHub loads the workflow from the DEFAULT branch, so this file must live on
-# `feat/oauth-http` to ever run. (ci.yml is currently keyed to `main`, a branch this repo does not
-# use, so it does not fire -- left as-is here rather than changed as a side effect of this work.)
+# `feat/oauth-http` to ever run. (ci.yml was previously keyed to `main` -- a branch this repo does
+# not have -- so it never fired; it is now keyed to `feat/oauth-http` and does run.)
 
 on:
   release:
