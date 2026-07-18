@@ -5,6 +5,7 @@ import {
   DEFAULT_BACKEND_BASE_URL,
   DEFAULT_MCP_CANONICAL_URI,
   DEFAULT_PORT,
+  jwksUriForIssuer,
   loadConfig,
   parseArgs,
 } from "../src/config.js";
@@ -64,6 +65,32 @@ describe("loadConfig", () => {
     expect(cfg.canonicalUri).toBe("https://mcp.env.dev/mcp");
     expect(cfg.asIssuer).toBe("https://env.dev/oauth");
     expect(cfg.asJwksUri).toBe("https://env.dev/jwks.json");
+  });
+
+  // TD-03 regression: the JWKS URI must FOLLOW the issuer, not be a stranded literal.
+  it("derives the JWKS URI from the issuer when AS_JWKS_URI is not set", () => {
+    const cfg = loadConfig([], { AS_ISSUER: "https://env.dev/oauth" });
+    expect(cfg.asIssuer).toBe("https://env.dev/oauth");
+    expect(cfg.asJwksUri).toBe("https://env.dev/oauth/.well-known/jwks.json");
+    expect(cfg.asJwksUri).not.toBe(DEFAULT_AS_JWKS_URI);
+  });
+
+  it("derives the JWKS URI from an issuer passed as a CLI flag, tolerating a trailing slash", () => {
+    const cfg = loadConfig(["--as-issuer=https://cli.dev/oauth/"], {});
+    expect(cfg.asJwksUri).toBe("https://cli.dev/oauth/.well-known/jwks.json");
+  });
+
+  it("still honours an explicit AS_JWKS_URI that does not live under the issuer", () => {
+    const cfg = loadConfig([], {
+      AS_ISSUER: "https://env.dev/oauth",
+      AS_JWKS_URI: "https://keys.elsewhere.dev/jwks.json",
+    });
+    expect(cfg.asJwksUri).toBe("https://keys.elsewhere.dev/jwks.json");
+  });
+
+  it("keeps the production default JWKS URI consistent with the production issuer", () => {
+    expect(DEFAULT_AS_JWKS_URI).toBe(jwksUriForIssuer(DEFAULT_AS_ISSUER));
+    expect(DEFAULT_AS_JWKS_URI).toBe("https://paylod.dev/oauth/.well-known/jwks.json");
   });
 
   it("strips a trailing slash from the backend base url but not the canonical uri", () => {

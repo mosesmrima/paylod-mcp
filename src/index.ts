@@ -24,8 +24,9 @@ function printHelp(): void {
       `                         Default: https://mcp.paylod.dev/mcp\n` +
       `  --as-issuer=<url>      Authorization-server issuer. Or AS_ISSUER.\n` +
       `                         Default: https://paylod.dev/oauth\n` +
-      `  --as-jwks-uri=<url>    AS JWKS endpoint (ES256). Or AS_JWKS_URI.\n` +
-      `                         Default: https://paylod.dev/oauth/.well-known/jwks.json\n` +
+      `  --as-jwks-uri=<url>    AS JWKS endpoint (ES256). Or AS_JWKS_URI. Only needed\n` +
+      `                         if the JWKS is not served under the issuer.\n` +
+      `                         Default: <as-issuer>/.well-known/jwks.json\n` +
       `  --timeout=<ms>         Backend network timeout in ms (default 30000).\n` +
       `  --help                 Show this help.\n`,
   );

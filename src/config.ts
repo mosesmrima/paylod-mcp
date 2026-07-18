@@ -7,13 +7,33 @@
  * The AS issuer, JWKS URI and canonical resource URI are FROZEN interface seams
  * (Revision 1.2); their defaults are the production values and should only be
  * overridden for local testing.
+ *
+ * TD-03: the JWKS URI is DERIVED from the resolved issuer unless it is set
+ * explicitly. Previously it was an independent literal, so moving the AS by
+ * setting AS_ISSUER alone left this client fetching keys from the OLD host —
+ * every agent token would then fail signature verification (total agent-auth
+ * outage). Deriving matches how the backend resolves JWKS, so one config change
+ * moves both halves together. An explicit AS_JWKS_URI / --as-jwks-uri still
+ * wins, for the case where the JWKS is not served under the issuer.
  */
 
 export const DEFAULT_BACKEND_BASE_URL = "https://paylod.dev/functions/v1";
 export const DEFAULT_MCP_CANONICAL_URI = "https://mcp.paylod.dev/mcp";
 export const DEFAULT_AS_ISSUER = "https://paylod.dev/oauth";
-export const DEFAULT_AS_JWKS_URI = "https://paylod.dev/oauth/.well-known/jwks.json";
 export const DEFAULT_PORT = 8787;
+
+/**
+ * The AS's standard JWKS location for a given issuer, per the OAuth 2.0
+ * Authorization Server Metadata layout the paylod AS publishes
+ * (`<issuer>/.well-known/jwks.json`, advertised as `jwks_uri` in
+ * `<issuer>/.well-known/oauth-authorization-server`).
+ */
+export function jwksUriForIssuer(issuer: string): string {
+  return `${stripSlash(issuer.trim())}/.well-known/jwks.json`;
+}
+
+/** Production default, derived from the production issuer (never a separate literal). */
+export const DEFAULT_AS_JWKS_URI = jwksUriForIssuer(DEFAULT_AS_ISSUER);
 
 export interface Config {
   /** TCP port the HTTP server listens on (behind Caddy). */
@@ -134,7 +154,10 @@ export function loadConfig(argv: readonly string[], env: Env): Config {
   // The canonical URI is an exact audience match — do NOT strip a trailing path.
   const canonicalUri = (args.canonicalUri || env.MCP_CANONICAL_URI || DEFAULT_MCP_CANONICAL_URI).trim();
   const asIssuer = (args.asIssuer || env.AS_ISSUER || DEFAULT_AS_ISSUER).trim();
-  const asJwksUri = (args.asJwksUri || env.AS_JWKS_URI || DEFAULT_AS_JWKS_URI).trim();
+  // TD-03: fall back to the issuer-derived JWKS URI, NOT to a fixed literal, so that
+  // relocating the AS via AS_ISSUER alone cannot strand this client on the old keys.
+  const explicitJwksUri = (args.asJwksUri || env.AS_JWKS_URI || "").trim();
+  const asJwksUri = explicitJwksUri || jwksUriForIssuer(asIssuer);
 
   const envTimeout = env.PAYLOD_TIMEOUT_MS ? Number(env.PAYLOD_TIMEOUT_MS) : undefined;
   const timeoutMs =
