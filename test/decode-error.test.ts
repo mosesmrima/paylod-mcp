@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  ALL_ENTRIES,
   classifyStkResult,
   decodeDarajaResult,
   ERROR_CATALOG,
@@ -97,8 +98,15 @@ describe("4999 / pending — the decoder must agree with the payment engine", ()
     }
   });
 
-  it("INVARIANT: the decoder never contradicts the engine's classifier", () => {
-    for (const code of Object.keys(ERROR_CATALOG)) {
+  it("INVARIANT: the decoder never contradicts the engine's classifier (STK surface)", () => {
+    // Scoped to STK-family codes on purpose. A code can exist in more than one family, and the
+    // STK "still processing -> pending" semantics belong to the STK surface alone. A dotted
+    // api_error code such as 400.002.02 is TERMINAL even though the STK classifier, which has
+    // never heard of it, would call it pending. See the non-STK invariant below.
+    const stkCodes = new Set(
+      ALL_ENTRIES.filter((e) => e.family === "stk_result").map((e) => e.code),
+    );
+    for (const code of stkCodes) {
       const outcome = classifyStkResult(code);
       const decoded = decodeDarajaResult(code);
       if (outcome === "pending") {
@@ -108,6 +116,39 @@ describe("4999 / pending — the decoder must agree with the payment engine", ()
       if (outcome === "success") {
         expect(decoded.category, `${code}: engine says success`).toBe("success");
       }
+    }
+  });
+
+  it("4999 on the STK surface is STILL pending (the scoping did not break the real path)", () => {
+    const d = decodeDarajaResult(4999, null, "stk_result");
+    expect(d.category).toBe("pending");
+    expect(d.retryable).toBe(false);
+  });
+
+  it("INVARIANT: no non-STK family decode is ever 'pending'", () => {
+    // The mirror-image of the 4999 bug: a TERMINAL api_error or b2c/c2b result reported as
+    // "still in flight" makes a caller poll forever on something that will never settle.
+    // Sweep the whole table from both non-STK surfaces — pending belongs to STK alone.
+    for (const code of Object.keys(ERROR_CATALOG)) {
+      for (const family of ["api_error", "b2c_c2b_result"] as const) {
+        const decoded = decodeDarajaResult(code, null, family);
+        expect(
+          decoded.category === "pending",
+          `${code} decoded as pending on the ${family} surface`,
+        ).toBe(false);
+      }
+    }
+  });
+
+  it("INVARIANT: a non-STK-only code never falls through to pending on the default surface", () => {
+    for (const e of ALL_ENTRIES) {
+      if (e.family === "stk_result") continue;
+      const hasStk = ALL_ENTRIES.some((x) => x.code === e.code && x.family === "stk_result");
+      if (hasStk) continue; // overloaded codes are governed by the STK surface by default
+      expect(
+        decodeDarajaResult(e.code).category === "pending",
+        `${e.code} (${e.family}) decoded via the default STK family fell through to pending`,
+      ).toBe(false);
     }
   });
 
