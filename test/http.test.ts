@@ -1,7 +1,8 @@
 import type { AddressInfo } from "node:net";
 import type { Server } from "node:http";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { createServer } from "../src/http/server.js";
+import { TokenVerifier } from "../src/oauth/verify.js";
 import { buildPrm } from "../src/http/prm.js";
 import { SCOPES } from "../src/scopes.js";
 import { makeConfig, makeTestKeys, mintToken, mockFetch, type TestKeys } from "./helpers.js";
@@ -80,6 +81,60 @@ describe("POST /mcp bearer validation", () => {
     });
     expect(res.status).toBe(401);
     expect(res.headers.get("www-authenticate")).toContain('error="invalid_token"');
+  });
+});
+
+/**
+ * A JWKS outage or a broken runtime must not be billed to the caller as a bad
+ * token. It gets 503 + Retry-After and NO WWW-Authenticate challenge — there is
+ * nothing for the client to re-authenticate with.
+ */
+describe("POST /mcp when token verification is unavailable", () => {
+  let broken: Server;
+  let brokenBase: string;
+
+  beforeAll(async () => {
+    // Stands in for Node 18's missing `globalThis.crypto`.
+    const verifier = new TokenVerifier(() => {
+      throw new ReferenceError("crypto is not defined");
+    }, { issuer: "https://paylod.dev/oauth", audience: "https://mcp.paylod.dev/mcp" });
+    const { fetch: f } = mockFetch({ json: { ok: true } });
+    broken = createServer(config, { verifier, fetchImpl: f });
+    await new Promise<void>((resolve) => broken.listen(0, "127.0.0.1", resolve));
+    const { port } = broken.address() as AddressInfo;
+    brokenBase = `http://127.0.0.1:${port}`;
+  });
+
+  afterAll(async () => {
+    await new Promise<void>((resolve) => broken.close(() => resolve()));
+  });
+
+  afterEach(() => vi.restoreAllMocks());
+
+  it("503s a VALID token instead of falsely calling it invalid", async () => {
+    vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const token = await mintToken(keys.privateKey, { scope: SCOPES.paymentsRead });
+    const res = await fetch(`${brokenBase}/mcp`, {
+      method: "POST",
+      headers: { ...MCP_HEADERS, Authorization: `Bearer ${token}` },
+      body: toolCall("list_applications"),
+    });
+    expect(res.status).toBe(503);
+    expect(res.headers.get("retry-after")).toBe("5");
+    expect(res.headers.get("www-authenticate")).toBeNull();
+    const body = (await res.json()) as { error: string };
+    expect(body.error).not.toMatch(/invalid or expired token/i);
+    // And no internals leak to the unauthenticated caller.
+    expect(body.error).not.toMatch(/crypto/i);
+  });
+
+  it("still 401s a genuinely missing bearer", async () => {
+    const res = await fetch(`${brokenBase}/mcp`, {
+      method: "POST",
+      headers: MCP_HEADERS,
+      body: toolCall("list_applications"),
+    });
+    expect(res.status).toBe(401);
   });
 });
 

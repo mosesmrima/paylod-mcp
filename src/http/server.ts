@@ -17,7 +17,11 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { PaylodClient, type FetchLike } from "../client.js";
 import type { Config } from "../config.js";
 import { buildMcpServer, requiredScopeFor } from "../server.js";
-import { ForbiddenError, UnauthorizedError } from "../oauth/errors.js";
+import {
+  ForbiddenError,
+  TokenVerificationUnavailableError,
+  UnauthorizedError,
+} from "../oauth/errors.js";
 import { extractBearer, TokenVerifier, type AccessClaims } from "../oauth/verify.js";
 import { buildPrm, PRM_PATH } from "./prm.js";
 import {
@@ -110,11 +114,18 @@ function enforceScopes(parsedBody: unknown, claims: AccessClaims): void {
   }
 }
 
-/** Send the correct 401/403 for an auth error (contract §3.4). */
+/** Send the correct 401/403/503 for an auth error (contract §3.4). */
 function respondAuthError(res: ServerResponse, err: unknown, config: Config): boolean {
   if (err instanceof UnauthorizedError) {
     const header = err.oauthError ? challengeInvalid() : challengeMissing(config);
     writeJson(res, 401, { error: err.message }, { "WWW-Authenticate": header });
+    return true;
+  }
+  if (err instanceof TokenVerificationUnavailableError) {
+    // A JWKS outage or a broken runtime is not the caller's fault: 503 + Retry-After,
+    // and NO `WWW-Authenticate` — there is nothing for the client to re-authenticate
+    // with. The request is still denied; only the diagnosis is honest.
+    writeJson(res, 503, { error: err.message }, { "Retry-After": "5" });
     return true;
   }
   if (err instanceof ForbiddenError) {

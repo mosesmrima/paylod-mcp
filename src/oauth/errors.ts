@@ -17,6 +17,27 @@ export class UnauthorizedError extends Error {
   }
 }
 
+/**
+ * 503 — we could not REACH a verdict on the token: the JWKS could not be
+ * fetched, WebCrypto is missing from the runtime, or the verifier itself threw
+ * a programming error. This is not the caller's fault and it is not a statement
+ * about their token, so it must never be rendered as 401 `invalid_token`.
+ *
+ * The `message` is deliberately generic — the operator gets the detail on
+ * stderr; the unauthenticated client gets none.
+ */
+export class TokenVerificationUnavailableError extends Error {
+  readonly status = 503 as const;
+
+  /** @param cause the underlying failure. Kept for logs; never sent to the client. */
+  constructor(cause?: unknown) {
+    // Carried as the standard `Error.cause` — not serialised by our JSON writer.
+    super("token verification temporarily unavailable", { cause });
+    this.name = "TokenVerificationUnavailableError";
+    this.cause = cause;
+  }
+}
+
 /** 403 — valid token but the granted scopes do not include the required one. */
 export class ForbiddenError extends Error {
   readonly status = 403 as const;
