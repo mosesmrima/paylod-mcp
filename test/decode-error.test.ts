@@ -34,9 +34,31 @@ describe("decodeDarajaResult", () => {
     expect(decodeDarajaResult(undefined).title).toBe("Payment failed");
   });
 
-  it("covers every catalog entry", () => {
-    for (const code of Object.keys(ERROR_CATALOG)) {
+  // Every catalog key that is a CANONICAL code round-trips. One key is not a code at all:
+  // Daraja sometimes puts prose in the code field ("Bad Request - Invalid Initiator
+  // Information"). The hardened classifier refuses a non-canonical spelling rather than
+  // treating it as authoritative evidence, so that entry resolves to `unknown` — conservative
+  // and non-retryable, which is the safe direction. Asserting a round-trip for it would mean
+  // asserting that prose IS a code, which is the property the classifier exists to deny.
+  const CANONICAL_CODE_RE =
+    /^(?:(?:0|[1-9][0-9]*)(?:\.[0-9]{1,8}){2,6}|(?:0|[1-9][0-9]*)|[A-Za-z][A-Za-z0-9_]{0,31})$/;
+
+  it("covers every canonical catalog entry", () => {
+    const canonical = Object.keys(ERROR_CATALOG).filter((c) => CANONICAL_CODE_RE.test(c));
+    // Guard against this test silently covering nothing if the catalog or the regex changes.
+    expect(canonical.length).toBeGreaterThan(25);
+    for (const code of canonical) {
       expect(decodeDarajaResult(code).code).toBe(code);
+    }
+  });
+
+  it("resolves a non-canonical catalog key to unknown rather than trusting it", () => {
+    const nonCanonical = Object.keys(ERROR_CATALOG).filter((c) => !CANONICAL_CODE_RE.test(c));
+    expect(nonCanonical).toEqual(["Bad Request - Invalid Initiator Information"]);
+    for (const code of nonCanonical) {
+      const decoded = decodeDarajaResult(code);
+      expect(decoded.code).toBe("unknown");
+      expect(decoded.retryable).toBe(false);
     }
   });
 });
